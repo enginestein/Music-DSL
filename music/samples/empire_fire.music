@@ -1,0 +1,112 @@
+tempo: 174
+name: Ashes of the Front
+key: Dm
+
+# WAR MARCH
+
+-- march: pluck 0.55 -0.2 reverb:0.05 --
+
+[ D2 e D2 e D2 e D2 e
+  D2 e D2 e D2 e D2 e ] x48
+
+# ARTILLERY SNARE
+
+-- snare: noise 0.40 0.15 reverb:0.12 --
+
+[ R e C2 e R e C2 e
+  C2 e R e C2 e R e ] x48
+
+# HEAVY BASS OSTINATO
+
+-- bass: sawtooth 0.45 -0.5 reverb:0.08 --
+
+[ D2 s D2 s A1 s D2 s
+  Eb2 s D2 s A1 s D2 s
+
+  D2 s D2 s A1 s D2 s
+  F2 s Eb2 s D2 s A1 s ] x24
+
+# LOW STRINGS
+
+-- strings: square 0.18 0.0 reverb:0.35 --
+
+[ D3 q D3 q Eb3 q D3 q
+  D3 q F3 q Eb3 q D3 q ] x24
+
+# SIREN FIGURE
+
+-- siren: triangle 0.16 0.2 reverb:0.55 --
+
+R w
+R w
+
+[ D5 h
+  Eb5 h
+
+  D5 h
+  A4 h ] x10
+
+# MAIN WAR MOTIF
+
+-- lead: organ 0.32 0.25 reverb:0.25 --
+
+R w
+R w
+R w
+R w
+
+[ D5 e D5 e Eb5 e D5 e
+
+  A4 q
+  D5 q
+
+  F5 e Eb5 e D5 e A4 e
+
+  D5 h ] x6
+
+# ESCALATION
+
+[ D6 s C6 s Bb5 s A5 s
+  D6 s C6 s Bb5 s A5 s
+
+  Eb6 s D6 s C6 s Bb5 s
+  Eb6 s D6 s C6 s Bb5 s
+
+  F6 q
+  Eb6 q
+
+  D6 h ] x2
+
+# WAR CHOIR
+
+-- choir: organ 0.10 0.0 reverb:0.95 --
+
+R w
+R w
+R w
+R w
+
+[ D4 w
+  Eb4 w
+  D4 w
+  Bb3 w ] x10
+
+# FINAL PUSH
+
+-- alarm: sawtooth 0.18 0.35 reverb:0.45 --
+
+R w
+R w
+R w
+R w
+
+R w
+R w
+
+[ D5 q Eb5 q
+  D5 q Eb5 q ] x4
+
+D6 h
+Eb6 h
+
+D6 w

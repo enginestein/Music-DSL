@@ -1,0 +1,164 @@
+# The Machine Awakens
+#
+# Demonstration composition for the music library.
+# Begins minimal and grows into a massive orchestral-electronic hybrid.
+#
+# Structure:
+# 1-8    Boot Sequence
+# 9-24   Core Initialization
+# 25-40  Computation Engine
+# 41-56  Emergence
+# 57-72  Ascension
+# 73-80  Finale
+
+tempo: 128
+name: The Machine Awakens
+key: Em
+
+# ═══════════════════════════════════════════════════════
+# PULSE
+# ═══════════════════════════════════════════════════════
+
+-- pulse: pluck 0.45 0.0 reverb:0.15 --
+
+[ E2 q E2 q E2 q E2 q ] x80
+
+# ═══════════════════════════════════════════════════════
+# DRUMS
+# ═══════════════════════════════════════════════════════
+
+-- drums: noise 0.30 0.12 reverb:0.18 --
+
+R w R w R w R w R w R w R w R w
+
+[ R q C2 q R q C2 q ] x64
+
+R w R w R w R w R w R w R w R w
+
+# ═══════════════════════════════════════════════════════
+# SUB BASS
+# ═══════════════════════════════════════════════════════
+
+-- bass: sawtooth 0.40 -0.5 reverb:0.18 --
+
+R w R w R w R w R w R w R w R w
+
+[ E1 e B1 e E2 e B1 e
+  C2 e G2 e C3 e G2 e
+  G1 e D2 e G2 e D2 e
+  D2 e A2 e D3 e A2 e ] x12
+
+R w R w R w R w R w R w R w R w
+
+# ═══════════════════════════════════════════════════════
+# ATMOSPHERIC PAD
+# ═══════════════════════════════════════════════════════
+
+-- pad: square 0.18 0.0 reverb:0.75 delay:0.25 --
+
+[ E3 w C3 w G3 w D3 w ] x20
+
+# ═══════════════════════════════════════════════════════
+# MOTION ARPEGGIO
+# ═══════════════════════════════════════════════════════
+
+-- arp: triangle 0.18 0.2 reverb:0.45 delay:0.15 --
+
+R w R w R w R w
+R w R w R w R w
+
+[ E3 s G3 s B3 s E4 s
+  G3 s B3 s E4 s G4 s
+  C3 s E3 s G3 s C4 s
+  E3 s G3 s C4 s E4 s
+
+  G2 s B2 s D3 s G3 s
+  B2 s D3 s G3 s B3 s
+  D3 s F#3 s A3 s D4 s
+  F#3 s A3 s D4 s F#4 s ] x8
+
+R w R w R w R w
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════
+# LEAD MELODY
+# ═══════════════════════════════════════════════════════
+
+-- lead: organ 0.35 0.3 reverb:0.55 delay:0.2 --
+
+# Boot + Core
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+
+# Emergence Theme
+[ E5 e G5 e B5 q
+  A5 e G5 e E5 q
+  D5 e E5 e G5 q
+  B5 h
+
+  G5 e A5 e B5 q
+  D6 e B5 e G5 q
+  E5 e G5 e B5 q
+  E6 h ] x2
+
+# Ascension Theme
+[ E5 s G5 s B5 s E6 s
+  D6 s B5 s G5 s E5 s
+  G5 s A5 s B5 s D6 s
+  E6 q B5 q
+
+  B5 s D6 s E6 s G6 s
+  E6 s D6 s B5 s G5 s
+  A5 s B5 s D6 s E6 s
+  G6 h ] x2
+
+# Finale
+E6 w
+B5 h G5 h
+E5 w
+R w
+
+# ═══════════════════════════════════════════════════════
+# COUNTERPOINT
+# ═══════════════════════════════════════════════════════
+
+-- counter: flute 0.20 -0.25 reverb:0.65 --
+
+# silence until emergence
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+
+[ B4 q D5 q G5 q D5 q
+  A4 q C5 q E5 q C5 q ] x4
+
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════
+# CHOIR
+# ═══════════════════════════════════════════════════════
+
+-- choir: organ 0.15 0.0 reverb:0.90 --
+
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+R w R w R w R w
+
+[ E4 w
+  C4 w
+  G4 w
+  D4 w ] x8
+
+# Finale swell
+E4 h G4 h
+B4 h E5 h
+E5 w
+R w

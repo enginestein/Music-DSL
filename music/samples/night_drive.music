@@ -1,0 +1,149 @@
+# Night Drive (Synthwave/Retrowave)
+#
+# A long original synthwave track with arpeggiated bass,
+# driving drums, atmospheric pads, and a lead melody.
+#
+# Play:  python3 music.py night_drive.music
+# Export:  python3 music.py --export night_drive.music night_drive.wav
+
+tempo: 94
+name: Night Drive
+key: Cm
+
+# ═══════════════════════════════════════════════════════════
+# SECTION MAP  (64 bars x 4 beats = 256 beats total)
+#
+#  Bars 1-4    INTRO       kick + hats
+#  Bars 5-16   VERSE A     + snare + bass + pad
+#  Bars 17-28  CHORUS A    + lead + arp
+#  Bars 29-40  VERSE B     snare + bass + pad (no lead)
+#  Bars 41-52  CHORUS B    + lead + arp (different melodies)
+#  Bars 53-60  BRIDGE      pads + kick (atmospheric shift)
+#  Bars 61-64  OUTRO       kick fade
+# ═══════════════════════════════════════════════════════════
+
+# ═══════════════════════════════════════════════════════════
+# KICK  — 4-on-the-floor, entire song
+# ═══════════════════════════════════════════════════════════
+
+-- kick: pluck 0.5 0.0 reverb:0.12 --
+
+[ C2 q C2 q C2 q C2 q ] x64
+
+# ═══════════════════════════════════════════════════════════
+# SNARE  — backbeat on 2 and 4
+# Plays during verse + chorus only (bars 5-52).
+# ═══════════════════════════════════════════════════════════
+
+-- snare: noise 0.35 0.15 reverb:0.35 --
+
+R w R w R w R w
+[ R q C2 q R q C2 q ] x48
+R w R w R w R w R w R w R w R w
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════════
+# HI-HATS  — eighth notes, entire song
+# ═══════════════════════════════════════════════════════════
+
+-- hats: noise 0.1 0.4 --
+
+[ C2 e C2 e C2 e C2 e  C2 e C2 e C2 e C2 e ] x64
+
+# ═══════════════════════════════════════════════════════════
+# BASS  — pulsing eighth-note root-fifth arpeggios
+# Chord progression (4 bars):  Cm | Ab | Eb | Bb
+# Plays during verse + chorus only (bars 5-52).
+# ═══════════════════════════════════════════════════════════
+
+-- bass: sawtooth 0.35 -0.4 delay:0.15 reverb:0.2 --
+
+R w R w R w R w
+
+[ C2 e G2 e C3 e G2 e  C2 e G2 e C3 e G2 e
+  Ab1 e Eb2 e Ab2 e Eb2 e  Ab1 e Eb2 e Ab2 e Eb2 e
+  Eb1 e Bb1 e Eb2 e Bb1 e  Eb1 e Bb1 e Eb2 e Bb1 e
+  Bb1 e F2 e Bb2 e F2 e  Bb1 e F2 e Bb2 e F2 e ] x12
+
+R w R w R w R w R w R w R w R w
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════════
+# PAD  — sustained atmospheric chords (single notes + reverb)
+# Verse + Chorus:  Cm  | Ab  | Eb  | Bb  (12 cycles)
+# Bridge:          Ab  | Fm  | Bb  | G   (2 cycles, harmonic)
+# ═══════════════════════════════════════════════════════════
+
+-- pad: square 0.15 0.0 reverb:0.65 delay:0.35 --
+
+R w R w R w R w
+
+[ C3 w Ab2 w Eb2 w Bb2 w ] x12
+
+# Bridge
+Ab2 w Ab2 w F3 w F3 w Bb2 w Bb2 w G2 w G2 w
+
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════════
+# LEAD  — main melody
+# Plays during chorus only (bars 17-28, 41-52).
+# Two melodies: Melody A (first), Melody B (second).
+# ═══════════════════════════════════════════════════════════
+
+-- lead: organ 0.3 0.25 reverb:0.5 delay:0.2 --
+
+# Intro + Verse A (16 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w R w R w R w R w
+
+# Chorus A — Melody A (12 bars = 3 cycles)
+[ Eb5 e C5 e G4 e C5 e  Eb5 q G5 e Eb5 e
+  Bb4 e Eb5 e G5 e Ab5 e  G5 q Eb5 e C5 e
+  G4 e C5 e Eb5 e G5 e  Eb5 e C5 e Bb4 e G4 e
+  F4 e F4 e Ab4 e C5 e  Bb4 q G4 e Eb4 e ] x3
+
+# Verse B (12 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w
+
+# Chorus B — Melody B (12 bars = 3 cycles, more energetic)
+[ C5 e Eb5 e G5 q  Eb5 e C5 e  Eb5 e G5 e C6 e Bb5 e
+  Ab5 e G5 e Eb5 e C5 e  G4 e Bb4 e C5 e Eb5 e
+  G5 e Eb5 e C5 e G4 e  Bb4 e G4 e Eb4 e G4 e
+  Ab4 q C5 e F5 e  G5 q Eb5 q ] x3
+
+# Bridge + Outro (12 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w
+
+# ═══════════════════════════════════════════════════════════
+# ARPEGGIO COUNTER-MELODY  — glassy triangle arpeggios
+# Plays during chorus only (bars 17-28, 41-52).
+# ═══════════════════════════════════════════════════════════
+
+-- arp: triangle 0.15 -0.2 reverb:0.4 delay:0.18 --
+
+# Intro + Verse A (16 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w R w R w R w R w
+
+# Chorus A — arpeggiated broken chords (12 bars = 3 cycles)
+[ C3 e Eb3 e G3 e C4 e G3 e Eb3 e C3 e R e
+  F3 e Ab3 e C4 e F4 e C4 e Ab3 e F3 e R e
+  Bb2 e Eb3 e G3 e Bb3 e G3 e Eb3 e Bb2 e R e
+  F2 e Ab2 e C3 e F3 e C3 e Ab2 e F2 e R e ] x3
+
+# Verse B (12 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w
+
+# Chorus B — different arpeggio (12 bars = 3 cycles)
+[ C4 e G3 e Eb3 e G3 e C4 e G3 e Eb3 e R e
+  Ab3 e Eb3 e C3 e Eb3 e Ab3 e Eb3 e C3 e R e
+  Bb3 e G3 e Eb3 e G3 e Bb3 e G3 e Eb3 e R e
+  F3 e C3 e Ab2 e C3 e F3 e C3 e Ab2 e R e ] x3
+
+# Bridge + Outro (12 bars silence)
+R w R w R w R w R w R w R w R w
+R w R w R w R w

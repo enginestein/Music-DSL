@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "music-dsl"
+version = "1.0.0"
+description = "Program your own music — A simple music DSL"
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+]
+
+[project.scripts]
+music = "music.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["music*"]

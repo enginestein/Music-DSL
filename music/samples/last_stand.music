@@ -1,0 +1,126 @@
+# Last Stand at Blackwall
+
+tempo: 162
+name: Last Stand at Blackwall
+key: Cm
+
+# ═══════════════════════════════════════════════════
+# SIEGE DRUMS
+# ═══════════════════════════════════════════════════
+
+-- drums: pluck 0.60 -0.25 reverb:0.04 --
+
+[ C2 e R e C2 e C2 e
+  C2 e R e C2 e C2 e ] x64
+
+# ═══════════════════════════════════════════════════
+# RUINED CITY BASS
+# ═══════════════════════════════════════════════════
+
+-- bass: sawtooth 0.48 -0.5 reverb:0.06 --
+
+[ C2 s G1 s C2 s G1 s
+  Db2 s C2 s G1 s C2 s
+
+  C2 s G1 s C2 s G1 s
+  Eb2 s Db2 s C2 s G1 s ] x32
+
+# ═══════════════════════════════════════════════════
+# MARCH STRINGS
+# ═══════════════════════════════════════════════════
+
+-- strings: square 0.18 0.0 reverb:0.30 --
+
+[ C3 q Db3 q C3 q G2 q
+  C3 q Eb3 q Db3 q C3 q ] x32
+
+# ═══════════════════════════════════════════════════
+# AIR RAID SIREN
+# ═══════════════════════════════════════════════════
+
+-- siren: triangle 0.12 0.30 reverb:0.70 --
+
+R w
+R w
+
+[ G4 h
+  Ab4 h
+
+  G4 h
+  C5 h ] x12
+
+# ═══════════════════════════════════════════════════
+# MAIN MOTIF
+# Four notes.
+# That's all.
+# Soldiers remember it.
+# The enemy fears it.
+# ═══════════════════════════════════════════════════
+
+-- lead: organ 0.28 0.2 reverb:0.25 --
+
+R w
+R w
+R w
+R w
+
+[ C5 e
+  Db5 e
+  C5 e
+  G4 e
+
+  C5 q
+
+  Eb5 e
+  Db5 e
+  C5 e
+  G4 e
+
+  C5 h ] x8
+
+# ═══════════════════════════════════════════════════
+# COUNTER BATTERY FIRE
+# ═══════════════════════════════════════════════════
+
+-- counter: sawtooth 0.16 0.15 reverb:0.20 --
+
+R w
+R w
+R w
+R w
+
+[ C4 s C4 s G4 s C5 s
+  Db5 s C5 s G4 s C4 s ] x16
+
+# ═══════════════════════════════════════════════════
+# CHOIR OF THE FALLEN
+# ═══════════════════════════════════════════════════
+
+-- choir: organ 0.10 0.0 reverb:0.95 --
+
+R w
+R w
+R w
+R w
+
+[ C4 w
+  Db4 w
+  C4 w
+  Bb3 w ] x14
+
+# ═══════════════════════════════════════════════════
+# FINAL COLLAPSE
+# ═══════════════════════════════════════════════════
+
+-- collapse: organ 0.22 0.0 reverb:0.85 --
+
+R w
+R w
+
+Ab5 h
+G5 h
+
+Eb5 h
+Db5 h
+
+C5 w

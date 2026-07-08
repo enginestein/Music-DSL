@@ -1,0 +1,156 @@
+# Skybound Kingdom
+#
+# A bright RPG overworld theme.
+# Floating islands, airships, clouds and adventure.
+#
+# Structure:
+# Intro
+# Main Theme A
+# Theme B
+# Grand Return
+# Ending
+
+tempo: 132
+name: Skybound Kingdom
+key: G
+
+# ═══════════════════════════════════════════════════════
+# RHYTHM
+# ═══════════════════════════════════════════════════════
+
+-- rhythm: pluck 0.30 0.0 reverb:0.15 --
+
+[ G2 q G2 q G2 q G2 q ] x48
+
+# ═══════════════════════════════════════════════════════
+# BASS
+# ═══════════════════════════════════════════════════════
+
+-- bass: sawtooth 0.30 -0.4 reverb:0.12 --
+
+[ G2 h D3 h
+  E2 h B2 h
+  C3 h G2 h
+  D2 h A2 h ] x12
+
+# ═══════════════════════════════════════════════════════
+# STRINGS
+# ═══════════════════════════════════════════════════════
+
+-- strings: square 0.18 0.0 reverb:0.65 --
+
+[ G4 w
+  E4 w
+  C4 w
+  D4 w ] x12
+
+# ═══════════════════════════════════════════════════════
+# HARP ARPEGGIOS
+# ═══════════════════════════════════════════════════════
+
+-- harp: triangle 0.16 0.2 reverb:0.45 delay:0.15 --
+
+[ G3 e B3 e D4 e G4 e
+  D4 e B3 e G3 e R e
+
+  E3 e G3 e B3 e E4 e
+  B3 e G3 e E3 e R e
+
+  C3 e E3 e G3 e C4 e
+  G3 e E3 e C3 e R e
+
+  D3 e F#3 e A3 e D4 e
+  A3 e F#3 e D3 e R e ] x12
+
+# ═══════════════════════════════════════════════════════
+# MAIN MELODY
+# ═══════════════════════════════════════════════════════
+
+-- lead: flute 0.34 0.25 reverb:0.55 --
+
+# Intro
+
+R w
+R w
+R w
+R w
+
+# Theme A
+
+[ G5 q B5 q D6 h
+  B5 q A5 q G5 h
+
+  E5 q G5 q B5 h
+  A5 q G5 q E5 h
+
+  C6 q B5 q G5 h
+  A5 q B5 q D6 h
+
+  G6 h D6 q B5 q
+  A5 h G5 h ] x2
+
+# Theme B
+
+[ E6 q D6 q B5 h
+  G5 q A5 q B5 h
+
+  C6 q E6 q G6 h
+  E6 q D6 q C6 h
+
+  B5 q D6 q G6 h
+  A6 q G6 q E6 h
+
+  D6 h B5 q G5 q
+  A5 h G5 h ] x2
+
+# Grand Return
+
+[ G5 e B5 e D6 e G6 e
+  D6 q B5 q
+
+  E6 e G6 e B6 e G6 e
+  E6 q D6 q
+
+  C6 e E6 e G6 e C7 e
+  G6 q E6 q
+
+  D6 q B5 q
+  A5 h G5 h ] x2
+
+# Ending
+
+G6 h D6 h
+B5 h G5 h
+G5 w
+
+# ═══════════════════════════════════════════════════════
+# COUNTER MELODY
+# ═══════════════════════════════════════════════════════
+
+-- counter: organ 0.18 -0.25 reverb:0.50 --
+
+R w R w R w R w
+
+[ D5 h G5 h
+  B4 h E5 h
+  G4 h C5 h
+  A4 h D5 h ] x8
+
+# ═══════════════════════════════════════════════════════
+# CHOIR
+# ═══════════════════════════════════════════════════════
+
+-- choir: organ 0.12 0.0 reverb:0.85 --
+
+R w R w R w R w
+
+[ G4 w
+  E4 w
+  C4 w
+  D4 w ] x10
+
+# Ending swell
+
+G4 h B4 h
+D5 h G5 h
+G5 w

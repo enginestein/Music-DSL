@@ -1,0 +1,167 @@
+# Iron Clash
+#
+# High-energy boss battle theme.
+# Relentless, mechanical, dangerous.
+#
+# Scene:
+# Two powerful opponents exchanging blows,
+# no clear winner, constant pressure.
+#
+# Structure:
+# Intro Warning
+# Battle Loop A
+# Escalation
+# Battle Loop B
+# Final Push
+
+tempo: 168
+name: Iron Clash
+key: Dm
+
+# ════════════════════════════════════════════════
+# WAR DRUM
+# ════════════════════════════════════════════════
+
+-- kick: pluck 0.55 -0.2 reverb:0.08 --
+
+[ D2 e D2 e D2 e D2 e
+  D2 e D2 e D2 e D2 e ] x64
+
+# ════════════════════════════════════════════════
+# SNARE
+# ════════════════════════════════════════════════
+
+-- snare: noise 0.35 0.1 reverb:0.25 --
+
+[ R e C2 e R e C2 e
+  R e C2 e R e C2 e ] x64
+
+# ════════════════════════════════════════════════
+# BATTLE BASS
+# ════════════════════════════════════════════════
+
+-- bass: sawtooth 0.42 -0.45 reverb:0.12 --
+
+[ D2 s A2 s D3 s A2 s
+  D2 s A2 s D3 s A2 s
+
+  Bb1 s F2 s Bb2 s F2 s
+  Bb1 s F2 s Bb2 s F2 s
+
+  G1 s D2 s G2 s D2 s
+  G1 s D2 s G2 s D2 s
+
+  A1 s E2 s A2 s E2 s
+  A1 s E2 s A2 s E2 s ] x8
+
+# ════════════════════════════════════════════════
+# STRINGS OSTINATO
+# ════════════════════════════════════════════════
+
+-- strings: square 0.20 0.0 reverb:0.45 --
+
+[ D4 s F4 s A4 s F4 s
+  D4 s F4 s A4 s F4 s
+
+  Bb3 s D4 s F4 s D4 s
+  Bb3 s D4 s F4 s D4 s
+
+  G3 s Bb3 s D4 s Bb3 s
+  G3 s Bb3 s D4 s Bb3 s
+
+  A3 s C4 s E4 s C4 s
+  A3 s C4 s E4 s C4 s ] x8
+
+# ════════════════════════════════════════════════
+# MAIN BATTLE MOTIF
+# ════════════════════════════════════════════════
+
+-- lead: organ 0.34 0.3 reverb:0.40 delay:0.08 --
+
+# Warning
+
+D5 q
+R e D5 e
+F5 q
+A5 q
+
+# Battle Theme A
+
+[ D5 e F5 e A5 q
+  D6 e A5 e F5 q
+
+  Bb5 e A5 e F5 q
+  D5 e F5 e G5 q
+
+  A5 e C6 e D6 q
+  C6 e A5 e G5 q
+
+  F5 e G5 e A5 q
+  D6 h ] x2
+
+# Escalation
+
+[ D6 s C6 s Bb5 s A5 s
+  D6 s C6 s Bb5 s A5 s
+
+  F6 s E6 s D6 s C6 s
+  F6 s E6 s D6 s C6 s
+
+  G6 q F6 q
+  E6 q D6 q
+
+  A6 h ] x2
+
+# Battle Theme B
+
+[ D6 e A5 e D6 e F6 e
+  A6 q F6 q
+
+  G6 e F6 e D6 e C6 e
+  Bb5 q A5 q
+
+  D6 e F6 e A6 e C7 e
+  A6 q F6 q
+
+  G6 e F6 e E6 e D6 e
+  C6 h ] x2
+
+# Final Push
+
+D6 e F6 e
+A6 e C7 e
+D7 q
+
+C7 e A6 e
+F6 e D6 e
+
+A6 q
+D7 h
+
+# ════════════════════════════════════════════════
+# COUNTER ATTACK LINE
+# ════════════════════════════════════════════════
+
+-- counter: triangle 0.18 -0.2 reverb:0.35 --
+
+R w
+
+[ A4 q D5 q
+  F5 q D5 q
+
+  G4 q Bb4 q
+  D5 q Bb4 q ] x10
+
+# ════════════════════════════════════════════════
+# CHOIR OF DOOM
+# ════════════════════════════════════════════════
+
+-- choir: organ 0.12 0.0 reverb:0.85 --
+
+R w
+R w
+
+[ D4 w
+  Bb3 w
+  G3 w
+  A3 w ] x12
