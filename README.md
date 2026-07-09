@@ -46,22 +46,8 @@ music --midi song.music out.mid  export to MIDI
 music --export song.music.wav    export to WAV
 music --import-midi file.mid     import & play MIDI
 music --import-midi file.mid out.music  import MIDI → .music
-music --repl                     interactive REPL
 music song.music --wave          play with waveform visualizer
 ```
-
-### REPL mode
-
-```
-$ music --repl
-> tempo: 120
-> inst: organ 0.5
-> C4 q E4 q G4 q C5 q
-> /play
-```
-
-Commands: `/play` `/wave` `/show` `/save fn` `/clear` `/tempo` `/inst` `/midi` `/quit`
-
 ---
 
 ## 📝 Language Reference

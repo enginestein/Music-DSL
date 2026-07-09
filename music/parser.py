@@ -108,6 +108,14 @@ def _preprocess_voltas(text):
     return ''.join(result)
 
 def load(text_or_file):
+    from .logger import trigger
+    file_repr = "Raw Input"
+    if not hasattr(text_or_file,'read') and not '\n' in str(text_or_file) and len(str(text_or_file))<260:
+        p = Path(str(text_or_file))
+        if p.exists():
+            file_repr = p.name
+    trigger('load_start', file_repr)
+
     if hasattr(text_or_file,'read'): text = text_or_file.read()
     else:
         p = Path(str(text_or_file))
@@ -117,6 +125,7 @@ def load(text_or_file):
 
     text = _preprocess_voltas(text)
     song = Song(); tr = None; key_acc = {}
+    song.key = 'C'  # Default key for logging
     patterns = OrderedDict()
     in_repeat = False; repeat_count = 1; repeat_notes = []
     pat_def = False; pat_name = ''
@@ -202,6 +211,7 @@ def load(text_or_file):
                 if ht_t: tr.humanize_timing = ht_t
                 if ht_v: tr.humanize_vel = ht_v
                 if lr: tr.lfo_filter_rate = lr; tr.lfo_filter_depth = ld
+                trigger('parse_track', name or inst_name, inst_name, vol, pan)
                 continue
 
             if l.startswith('inst:'):
@@ -209,17 +219,24 @@ def load(text_or_file):
                 nm = parts[0]
                 v = float(parts[1]) if len(parts)>1 else 0.5
                 p = float(parts[2]) if len(parts)>2 else 0.0
-                _new_tr(nm, nm, v, p); continue
+                _new_tr(nm, nm, v, p)
+                trigger('parse_track', nm, nm, v, p)
+                continue
 
             if l.startswith('tempo'):
                 v = l.split(':',1)[-1].strip().split()[0]
-                song.tempo = float(v); continue
+                song.tempo = float(v)
+                trigger('parse_metadata', song.tempo, getattr(song, 'key', 'C'), f"{song.beats_per_bar}/{song.beat_unit}")
+                continue
             if l.startswith('name'):
-                song.name = l.split(':',1)[-1].strip().strip('\'"'); continue
+                song.name = l.split(':',1)[-1].strip().strip('\'"')
+                continue
             if l.startswith('key'):
                 k = l.split(':',1)[-1].strip()
+                song.key = k
                 if k.lower() in ('none','c'): key_acc = {}
                 else: key_acc = _key_accidentals(k)
+                trigger('parse_metadata', song.tempo, song.key, f"{song.beats_per_bar}/{song.beat_unit}")
                 continue
             if l.startswith('time'):
                 v = l.split(':',1)[-1].strip().split()[0]
@@ -227,6 +244,7 @@ def load(text_or_file):
                 if len(parts) == 2:
                     song.beats_per_bar = int(parts[0]); song.beat_unit = int(parts[1])
                     _tr().beats_per_bar = song.beats_per_bar; _tr()._bar_pos = 0.0
+                trigger('parse_metadata', song.tempo, getattr(song, 'key', 'C'), f"{song.beats_per_bar}/{song.beat_unit}")
                 continue
             if l.startswith('reverb'):
                 _tr().rev = clamp(float(l.split(':',1)[-1].strip())); continue
@@ -349,8 +367,11 @@ def load(text_or_file):
 
     if in_repeat: raise ValueError("error at end: unclosed repeat bracket '['")
     if pat_def: raise ValueError(f"error at end: unclosed @pattern {pat_name}")
+    trigger('expand_markers')
     _expand_dc_markers(song)
     _expand_ds_markers(song)
     _expand_voltas(song)
+    total_notes = sum(len(tr.notes) for tr in song.tracks)
+    trigger('load_done', len(song.tracks), total_notes)
     if not song.total_beats(): raise ValueError("error: no notes found")
     return song

@@ -34,12 +34,15 @@ def _delay(signal, mix=0.0, time=0.3, fb=0.3):
     return out
 
 def _play(mix, wait=True):
+    from .logger import trigger
     a = np.clip(mix*MAX_AMP*0.95, -MAX_AMP, MAX_AMP).astype(np.int16)
     if _SD:
+        trigger('play_start', 'sounddevice (Python)')
         sd.play(a, SAMPLE_RATE)
         if wait: sd.wait()
         return
     if _PA:
+        trigger('play_start', 'PyAudio (Python)')
         def r():
             try:
                 p = pyaudio.PyAudio()
@@ -59,7 +62,10 @@ def _play(mix, wait=True):
     _save(mix, tmp)
     for c in ('pw-play','paplay','aplay'):
         if subprocess.run(['which',c],capture_output=True).returncode==0:
+            trigger('play_start', f'{c} (subprocess)')
             subprocess.run([c,tmp]); break
+    else:
+        trigger('play_start', 'default system player')
     if Path(tmp).exists(): Path(tmp).unlink()
 
 def _save(mix, fn):

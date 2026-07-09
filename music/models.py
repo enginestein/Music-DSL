@@ -436,27 +436,38 @@ class Song:
     def dur_secs(self): return self.total_beats() * self.beat_secs
 
     def render(self, extra=0.5):
+        from .logger import trigger
         tb = self.total_beats()
         if tb == 0: raise ValueError("empty song")
+        trigger('render_start', tb, self.dur_secs())
         ex = int(extra*SAMPLE_RATE)
         ns = int(tb*self.beat_secs*SAMPLE_RATE)+ex
         mix = np.zeros((ns, CHANNELS), dtype=np.float64)
         for tr in self.tracks:
+            trigger('render_track_start', tr.name, tr.inst)
             trk = self._render_track(tr, ns)
             if tr.filter_type and tr.filter_type in ('lp','hp','bp'):
                 fc = tr.filter_freq
+                trigger('render_track_filter', tr.filter_type, fc, tr.filter_q)
                 for ch in range(CHANNELS):
                     if tr.filter_type == 'lp': trk[:,ch] = _lpf(trk[:,ch], fc)
                     elif tr.filter_type == 'hp': trk[:,ch] = _hpf(trk[:,ch], fc)
                     elif tr.filter_type == 'bp': trk[:,ch] = _bpf(trk[:,ch], fc, tr.filter_q)
             if tr.dist_amount > 0:
+                trigger('render_track_dist', tr.dist_amount)
                 gain = 1 + tr.dist_amount * 10
                 trk = np.tanh(trk * gain) / np.tanh(gain) if gain > 0 else trk
             mix += trk
         peak = np.max(np.abs(mix))
+        trigger('render_mix')
         if peak > 1.0: mix = mix/peak*0.95
-        if self.rev > 0: mix = _reverb(mix, self.rev)
-        if self.delay > 0: mix = _delay(mix, self.delay)
+        if self.rev > 0:
+            trigger('render_master_reverb', self.rev)
+            mix = _reverb(mix, self.rev)
+        if self.delay > 0:
+            trigger('render_master_delay', self.delay)
+            mix = _delay(mix, self.delay)
+        trigger('render_done')
         return mix
 
     def _humanize_notes(self, notes):
