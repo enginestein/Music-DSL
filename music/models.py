@@ -47,7 +47,8 @@ def _bpf(x, fc, q, fs=SAMPLE_RATE):
 class Note:
     __slots__ = ('pitch','duration','velocity','freq','rest','group',
                  'voice','staccato','legato','dynamic','vibrato','tremolo',
-                 'portamento','grace','tie','tied','humanize_toff','humanize_voff')
+                 'portamento','grace','tie','tied','humanize_toff','humanize_voff',
+                 'accent','probability')
     def __init__(self, pitch='R', duration=1.0, velocity=0.8):
         self.pitch = str(pitch)
         self.duration = float(duration)
@@ -67,6 +68,8 @@ class Note:
         self.tied = False
         self.humanize_toff = 0.0
         self.humanize_voff = 0.0
+        self.accent = 0
+        self.probability = 1.0
     def __repr__(self):
         if self.rest: return f"R({self.duration:.3f})"
         return f"{self.pitch}({self.duration:.3f})"
@@ -100,6 +103,7 @@ class Track:
         self.humanize_vel = 0.0
         self.lfo_filter_rate = 0.0
         self.lfo_filter_depth = 0.0
+        self.mute = False
 
     def line(self, text, key_acc={}):
         text = text.replace('|', ' | ').replace('||', ' || ')
@@ -107,15 +111,24 @@ class Track:
         text = text.replace('{', ' { ').replace('}', ' } ').replace('@', ' @ ')
         def _pad_dots(m):
             run = m.group(0)
-            prev = m.string[m.start()-1] if m.start() > 0 else ''
+            if m.start() == 0:
+                return ' . ' * len(run)
+            prev = m.string[m.start()-1]
             if prev in 'whqestx':
                 return run
+            if prev.isdigit():
+                idx = m.start() - 1
+                while idx >= 0 and (m.string[idx].isdigit() or m.string[idx] == '.'):
+                    idx -= 1
+                if idx >= 0 and m.string[idx] == '_':
+                    return run
             return ' . ' * len(run)
         text = re.sub(r'\.+', _pad_dots, text)
         text = text.replace('~', ' ~ ')
         toks = text.split()
         i = 0; cur = 1.0; cur_dyn = ''; tuplet_n = 0; cur_voice = 0
         cur_vib = 0.0; cur_tre = 0.0; cur_port = 0.0; cur_tie = False
+        cur_prob = 1.0; cresc_notes = []
         while i < len(toks):
             t = toks[i]
             if t.startswith('#'): i+=1; continue
@@ -147,6 +160,12 @@ class Track:
                     if len(ps)>=1 and ps[0]=='filter' and len(ps)>=3:
                         self.lfo_filter_rate = float(ps[1]); self.lfo_filter_depth = float(ps[2])
                         if len(ps)>=4: self.filter_freq = float(ps[3])
+                    i+=1; continue
+                if t.startswith('tempo:'):
+                    try:
+                        v = float(t.split(':')[1])
+                        self.notes.append(Note(f'$tempo:{v}', 0, 0))
+                    except: pass
                     i+=1; continue
                 if not any(t.startswith(p) for p in ('reverb:','delay:','swing:')):
                     try:
@@ -219,10 +238,12 @@ class Track:
                                 self.notes.append(Note('R', nd, 0))
                             else:
                                 p = _apply_key(ste, key_acc)
-                                n = self._mknote(p, nd, 0.8, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                                n = self._mknote(p, nd, 0.8, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
                                 if n:
                                     if cur_tie: n.tie = True; cur_tie = False
                                     self.notes.append(n)
+                                    if n.rest or n.pitch.startswith('$'): pass
+                                    elif cresc_notes is not None: cresc_notes.append(n)
                     continue
                 if tok in ('coin','rand','choose','shuffle'):
                     cmd = tok; i+=1; ps = []
@@ -235,17 +256,17 @@ class Track:
                             try: prob = float(ps[0]); ps = ps[1:]
                             except: pass
                             if random.random() < prob and ps:
-                                self._emit_note(random.choice(ps), cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, pea='·' if not cur_tie else '~')
+                                self._emit_note(random.choice(ps), cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, pea='·' if not cur_tie else '~', prob=cur_prob)
                                 if cur_tie: cur_tie = False
                         elif cmd == 'rand':
-                            self._emit_note(random.choice(ps), cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                            self._emit_note(random.choice(ps), cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, prob=cur_prob)
                         elif cmd == 'choose':
                             for p in ps:
-                                self._emit_note(p, cur/len(ps), cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                                self._emit_note(p, cur/len(ps), cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, prob=cur_prob)
                         elif cmd == 'shuffle':
                             random.shuffle(ps)
                             for p in ps:
-                                self._emit_note(p, cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                                self._emit_note(p, cur, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, prob=cur_prob)
                     continue
                 try: cur = float(tok); i+=1
                 except: pass
@@ -261,11 +282,13 @@ class Track:
                     if nd2 is not None: nd = nd2; i+=1
                 self._cur_group += 1
                 for p in ps:
-                    n = self._mknote(p, nd, 0.8, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                    n = self._mknote(p, nd, 0.8, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
                     if n:
                         n.group = self._cur_group
                         if cur_tie: n.tie = True; cur_tie = False
                         self.notes.append(n)
+                        if n.rest or n.pitch.startswith('$'): pass
+                        elif cresc_notes is not None: cresc_notes.append(n)
                 self._bar_pos += nd; cur = nd; continue
             if t == '{':
                 if i+1 < len(toks) and tuplet_n > 0:
@@ -275,7 +298,7 @@ class Track:
                         i+=1
                     i+=1; scale = tuplet_m / max(tuplet_n, 1); nd = cur * scale
                     for p in ps:
-                        self._emit_note(p, nd, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                        self._emit_note(p, nd, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, prob=cur_prob)
                         if cur_tie: self.notes[-1].tie = True; cur_tie = False
                     self._bar_pos += nd * len(ps); tuplet_n = 0
                 elif i+1 < len(toks) and toks[i+1] != '}':
@@ -285,7 +308,7 @@ class Track:
                         i+=1
                     i+=1; gdur = cur * 0.25
                     for p in ps:
-                        n = self._mknote(p, gdur, 0.5, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                        n = self._mknote(p, gdur, 0.5, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
                         if n: n.grace = gdur; self.notes.append(n)
                 else: i+=1
                 continue
@@ -300,10 +323,38 @@ class Track:
                 self._bar_pos += nd; i+=1; continue
             if t == '~' and cur_tie:
                 cur_tie = False; i+=1; continue
+            if t.startswith('?'):
+                parts = [t[1:]]
+                while i+1 < len(toks) and (toks[i+1] == '.' or toks[i+1].replace('.','').isdigit()):
+                    i+=1; parts.append(toks[i])
+                val = ''.join(parts) or '1'
+                try: cur_prob = clamp(float(val))
+                except: cur_prob = 1.0
+                if cur_prob < 0: cur_prob = 0
+                i+=1; continue
+            if t == '<':
+                cresc_notes.clear()
+                i+=1; continue
+            if t == '>':
+                if cresc_notes:
+                    nnotes = len(cresc_notes)
+                    for ci, cn in enumerate(cresc_notes):
+                        if not cn.rest:
+                            cn.velocity *= 1.0 + 0.4 * (ci / max(nnotes - 1, 1))
+                cresc_notes.clear()
+                i+=1; continue
             p = t
-            if not p[0].isupper(): i+=1; continue
+            accent_lvl = 0
+            if p and p[0] in ('>','^','+'):
+                accent_lvl = {'>':1,'^':2,'+':3}[p[0]]
+                p = p[1:]
+            if not p or not p[0].isupper(): i+=1; continue
 
-            ch = parse_chord(p)
+            m = re.match(r'^[A-G][b#]?(\d+)$', p)
+            if m and 0 <= int(m.group(1)) <= 9:
+                ch = None
+            else:
+                ch = parse_chord(p)
             if ch is not None:
                 nd = cur; vel = 0.8; pea = '·'; i+=1
                 if i < len(toks):
@@ -328,12 +379,15 @@ class Track:
                 for midi_val in ch:
                     nm = midi_to_name(midi_val)
                     nm = _apply_key(nm, key_acc)
-                    n = self._mknote(nm, nd, vel, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+                    n = self._mknote(nm, nd, vel, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
                     if n:
                         n.group = self._cur_group
                         if pea == '.': n.staccato = True
                         elif pea == '~': n.tie = True
+                        if accent_lvl: n.accent = accent_lvl
                         self.notes.append(n)
+                        if n.rest or n.pitch.startswith('$'): pass
+                        elif cresc_notes is not None: cresc_notes.append(n)
                 self._bar_pos += nd; cur = nd; continue
 
             nd = cur; vel = 0.8; pea = '·'; i+=1
@@ -356,23 +410,26 @@ class Track:
                 try: vel = clamp(float(toks[i][1:])); i+=1
                 except: pass
             p = _apply_key(p, key_acc)
-            n = self._mknote(p, nd, vel, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port)
+            n = self._mknote(p, nd, vel, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
             if n:
                 if pea == '.': n.staccato = True
                 elif pea == '~': n.tie = True
                 if cur_tie: n.tie = True; cur_tie = False
+                if accent_lvl: n.accent = accent_lvl
                 self.notes.append(n)
+                if n.rest or n.pitch.startswith('$'): pass
+                elif cresc_notes is not None: cresc_notes.append(n)
             cur = nd
         return self
 
-    def _emit_note(self, p, d, dyn='', voice=0, vib=0, tre=0, port=0, vel=0.8, pea='·'):
-        n = self._mknote(p, d, vel, dyn, voice, vib, tre, port)
+    def _emit_note(self, p, d, dyn='', voice=0, vib=0, tre=0, port=0, vel=0.8, pea='·', prob=1.0):
+        n = self._mknote(p, d, vel, dyn, voice, vib, tre, port, prob)
         if n:
             if pea == '.': n.staccato = True
             elif pea == '~': n.tie = True
             self.notes.append(n)
 
-    def _mknote(self, p, d, v=0.8, dyn='', voice=0, vib=0, tre=0, port=0):
+    def _mknote(self, p, d, v=0.8, dyn='', voice=0, vib=0, tre=0, port=0, prob=1.0):
         p = p.strip()
         if not p or p.lower() in ('r','rest','_',''):
             n = Note('R', d, 0); n.voice = voice; self.notes.append(n); return None
@@ -381,6 +438,7 @@ class Track:
             if self.transpose: m += self.transpose; p = midi_to_name(m)
             n = Note(p, d, v)
             n.voice = voice; n.vibrato = vib; n.tremolo = tre; n.portamento = port
+            n.probability = prob
             if dyn:
                 dv = _dyn_vel(dyn)
                 if isinstance(dv, tuple): n.velocity *= dv[0]
@@ -413,6 +471,7 @@ class Track:
         t.filter_q = self.filter_q; t.dist_amount = self.dist_amount
         t.humanize_timing = self.humanize_timing; t.humanize_vel = self.humanize_vel
         t.lfo_filter_rate = self.lfo_filter_rate; t.lfo_filter_depth = self.lfo_filter_depth
+        t.mute = self.mute
         return t
 
     def __repr__(self):
@@ -442,6 +501,7 @@ class Song:
         ns = int(tb*self.beat_secs*SAMPLE_RATE)+ex
         mix = np.zeros((ns, CHANNELS), dtype=np.float64)
         for tr in self.tracks:
+            if tr.mute: continue
             trk = self._render_track(tr, ns)
             if tr.filter_type and tr.filter_type in ('lp','hp','bp'):
                 fc = tr.filter_freq
@@ -490,9 +550,11 @@ class Song:
             res.append(n); i+=1
         return [n for n in res if not n.tied]
 
+    _ACCENT_VEL = {0:1.0, 1:1.3, 2:1.5, 3:1.8}
+
     def _render_track(self, tr, ns):
         out = np.zeros((ns, CHANNELS), dtype=np.float64)
-        bs = self.beat_secs; bp = 0.0
+        bs = self.beat_secs; time_sec = 0.0
         wf = _INSTS.get(tr.inst, _INSTS['sine'])
         lg, rg = self._pan(tr.pan); a = tr.adsr
         notes_copy = [n.copy() for n in tr.notes]
@@ -504,17 +566,31 @@ class Song:
         last_freq = None; last_end = 0
         prev_group = 0; chord_dur = 0.0
         for n in notes_copy:
-            if n.pitch.startswith('$'): continue
+            if n.pitch.startswith('$'):
+                if n.pitch.startswith('$tempo:'):
+                    try: bs = 60.0 / float(n.pitch.split(':')[1])
+                    except: pass
+                continue
+            if n.probability < 1.0 and random.random() > n.probability:
+                if n.group and not prev_group:
+                    prev_group = n.group; chord_dur = n.duration
+                    continue
+                if n.group and n.group == prev_group:
+                    continue
+                prev_group = 0; chord_dur = 0
+                time_sec += n.duration * bs
+                continue
             if prev_group and n.group != prev_group:
-                bp += chord_dur; chord_dur = 0; prev_group = 0
+                time_sec += chord_dur * bs; chord_dur = 0; prev_group = 0
             if n.rest:
                 if prev_group:
-                    bp += chord_dur; chord_dur = 0; prev_group = 0
-                bp += n.duration; continue
+                    time_sec += chord_dur * bs; chord_dur = 0; prev_group = 0
+                time_sec += n.duration * bs; continue
+            acc_vel = self._ACCENT_VEL.get(n.accent, 1.0)
             if n.group and n.group == prev_group:
                 toff = n.humanize_toff * bs
-                st = int((bp+toff)*bs*SAMPLE_RATE)
-                nsp = int(n.duration*bs*SAMPLE_RATE)
+                st = int((time_sec + toff) * SAMPLE_RATE)
+                nsp = int(n.duration * bs * SAMPLE_RATE)
                 if st >= ns: break
                 if st+nsp > ns: nsp = ns-st
                 if nsp <= 0: continue
@@ -534,7 +610,7 @@ class Song:
                     if glide > 0:
                         freqs = np.linspace(last_freq, n.freq, glide)
                         sig[:glide] = wf(t[:glide], freqs)
-                sig = sig * env * n.velocity * tr.vol
+                sig = sig * env * n.velocity * acc_vel * tr.vol
                 if tr.lfo_filter_rate > 0 and tr.lfo_filter_depth > 0 and tr.filter_type == 'lp':
                     lfo_fc = tr.filter_freq + tr.lfo_filter_depth*np.sin(2*np.pi*tr.lfo_filter_rate*t)
                     lfo_fc = np.maximum(lfo_fc, 20)
@@ -549,8 +625,8 @@ class Song:
                 out[st:st+nsp,0] += sig*lg; out[st:st+nsp,1] += sig*rg
                 continue
             toff = n.humanize_toff * bs
-            st = int((bp+toff)*bs*SAMPLE_RATE)
-            nsp = int(n.duration*bs*SAMPLE_RATE)
+            st = int((time_sec + toff) * SAMPLE_RATE)
+            nsp = int(n.duration * bs * SAMPLE_RATE)
             if st >= ns: break
             if st+nsp > ns: nsp = ns-st
             if nsp <= 0: continue
@@ -570,7 +646,7 @@ class Song:
                 if glide > 0:
                     freqs = np.linspace(last_freq, n.freq, glide)
                     sig[:glide] = wf(t[:glide], freqs)
-            sig = sig * env * n.velocity * tr.vol
+            sig = sig * env * n.velocity * acc_vel * tr.vol
             if tr.lfo_filter_rate > 0 and tr.lfo_filter_depth > 0 and tr.filter_type == 'lp':
                 lfo_fc = tr.filter_freq + tr.lfo_filter_depth*np.sin(2*np.pi*tr.lfo_filter_rate*t)
                 lfo_fc = np.maximum(lfo_fc, 20)
@@ -587,8 +663,8 @@ class Song:
             if n.group:
                 chord_dur = n.duration; prev_group = n.group
             else:
-                bp += n.duration
-        if prev_group: bp += chord_dur
+                time_sec += n.duration * bs
+        if prev_group: time_sec += chord_dur * bs
         return out
 
     def _swing_notes(self, notes, amount):
@@ -646,6 +722,7 @@ class Song:
         print(f"{'─'*56}")
         for i,t in enumerate(self.tracks,1):
             extra = ''
+            if t.mute: extra += ' [MUTED]'
             if t.filter_type: extra += f' filter:{t.filter_type}'
             if t.dist_amount > 0: extra += f' dist:{t.dist_amount:.2f}'
             if t.humanize_timing > 0: extra += f' hum:{t.humanize_timing:.3f}'

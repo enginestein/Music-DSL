@@ -82,6 +82,37 @@ def _expand_voltas(song):
             new.append(n)
         tr.notes = new
 
+def _expand_jump_markers(song):
+    labels = {}
+    for tr in song.tracks:
+        labels.clear()
+        for i, n in enumerate(tr.notes):
+            if n.pitch.startswith('$label:'):
+                labels[n.pitch.split(':',1)[1]] = i
+        jumps = [i for i, n in enumerate(tr.notes) if n.pitch.startswith('$jump:')]
+        if not jumps or not labels: continue
+        new_notes = []
+        skip = set()
+        jump_dests = {}
+        for ji in jumps:
+            nm = tr.notes[ji].pitch.split(':',1)[1]
+            if nm in labels:
+                jump_dests[ji] = labels[nm]
+        if not jump_dests: continue
+        skip = set(jump_dests.keys())
+        for i, n in enumerate(tr.notes):
+            if i in skip:
+                if i in jump_dests:
+                    dest = jump_dests[i]
+                    for j in range(dest + 1, len(tr.notes)):
+                        if tr.notes[j].pitch.startswith('$'): continue
+                        c = Note(tr.notes[j].pitch, tr.notes[j].duration, tr.notes[j].velocity)
+                        c.group = tr.notes[j].group
+                        new_notes.append(c)
+                continue
+            new_notes.append(n)
+        tr.notes = [n for n in new_notes if not n.pitch.startswith('$label:')]
+
 def _preprocess_voltas(text):
     result = []
     i = 0
@@ -149,6 +180,7 @@ def load(text_or_file):
                 rev = 0.0; dly = 0.0; swng = 0.0
                 ft = ''; ff = 1000.0; fq = 0.7; da = 0.0
                 ht_t = 0.0; ht_v = 0.0; lr = 0.0; ld = 0.0
+                mute_flag = False
                 if ':' in inner:
                     parts = inner.split(':',1)
                     name = parts[0].strip(); raw = parts[1].strip()
@@ -164,6 +196,8 @@ def load(text_or_file):
                     elif tok.startswith('reverb:'): rev = clamp(float(tok[7:]))
                     elif tok.startswith('delay:'): dly = clamp(float(tok[6:]))
                     elif tok.startswith('swing:'): swng = clamp(float(tok[6:]))
+                    elif tok == 'mute':
+                        mute_flag = True
                     elif tok.startswith('filter:'):
                         p = tok.split(':',1)[1].split()
                         if p: ft = p[0]
@@ -196,6 +230,7 @@ def load(text_or_file):
                             elif not pan_set: pan = clamp(f,-1,1); pan_set = True
                         except: pass
                 tr = _new_tr(name, inst_name, vol, pan)
+                tr.mute = mute_flag
                 tr.rev = rev; tr.delay = dly; tr.sw = swng
                 if ft: tr.filter_type = ft; tr.filter_freq = ff; tr.filter_q = fq
                 if da: tr.dist_amount = da
@@ -212,8 +247,9 @@ def load(text_or_file):
                 _new_tr(nm, nm, v, p); continue
 
             if l.startswith('tempo'):
-                v = l.split(':',1)[-1].strip().split()[0]
-                song.tempo = float(v); continue
+                rest = l.split(':',1)[-1].strip().split()
+                if len(rest) == 1 and rest[0].replace('.','').replace('-','').isdigit():
+                    song.tempo = float(rest[0]); continue
             if l.startswith('name'):
                 song.name = l.split(':',1)[-1].strip().strip('\'"'); continue
             if l.startswith('key'):
@@ -292,6 +328,19 @@ def load(text_or_file):
                     c.group = n.group; _tr().notes.append(c)
                 continue
 
+            if l.startswith('@jump'):
+                nm = l.split(None,1)[-1].strip()
+                _tr().notes.append(Note(f'$jump:{nm}', 0, 0))
+                continue
+
+            if l.startswith('[') and ']' in l and not l.startswith('[1') and not l.startswith('[2'):
+                inner = l[1:].split(']')[0].strip()
+                if inner and not inner[0].isdigit() and not (inner[0].isupper() and ':' in inner):
+                    _tr().notes.append(Note(f'$label:{inner}', 0, 0))
+                    after = l.split(']',1)[1].strip()
+                    if after: _tr().line(after, key_acc)
+                    continue
+
             if '[1' in l or '[2' in l:
                 _tr().line(l.strip(), key_acc)
                 continue
@@ -352,5 +401,6 @@ def load(text_or_file):
     _expand_dc_markers(song)
     _expand_ds_markers(song)
     _expand_voltas(song)
+    _expand_jump_markers(song)
     if not song.total_beats(): raise ValueError("error: no notes found")
     return song

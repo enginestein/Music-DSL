@@ -36,22 +36,24 @@ def parse_chord(text):
     if len(text) > i and text[i] in '#b': i += 1
     root = text[:i]
     rest = text[i:]
-    ch_type = ''
+    ch_type = None
     oct_str = ''
-    for ct in sorted(_CHORD_INTERVALS, key=len, reverse=True):
-        if ct and rest.endswith(ct):
-            ch_type = ct
-            oct_str = rest[:-len(ct)]
-            break
+    if not rest:
+        ch_type = ''
     else:
-        if rest:
+        for ct in sorted(_CHORD_INTERVALS, key=len, reverse=True):
+            if ct and rest.endswith(ct):
+                ch_type = ct
+                oct_str = rest[:-len(ct)]
+                break
+        else:
             if rest[0].isdigit():
                 oct_str = rest
             elif rest in _CHORD_INTERVALS:
                 ch_type = rest
-    if not ch_type and not oct_str:
+    if ch_type is None and not oct_str:
         return None
-    if not ch_type:
+    if ch_type is None:
         return None
     root_pc = _SEMIS.get(root, 0)
     intervals = _CHORD_INTERVALS[ch_type]
