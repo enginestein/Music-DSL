@@ -29,11 +29,18 @@ pip install .
 pip install -e .        # editable mode (development)
 ```
 
+### System-wide install (Linux)
+
+```bash
+sudo ./install.sh       # creates venv at /opt/music, installs dependencies
+```
+
 ### Verify
 
 ```bash
 music --help
 music music/samples/night_drive.music   # play a sample
+python3 -m music --help                 # alternative invocation
 ```
 
 ---
@@ -47,6 +54,57 @@ music --export song.music.wav    export to WAV
 music --import-midi file.mid     import & play MIDI
 music --import-midi file.mid out.music  import MIDI → .music
 music song.music --wave          play with waveform visualizer
+python3 -m music song.music      alternative invocation
+```
+
+---
+
+## Python API
+
+Use Music DSL programmatically from Python:
+
+```python
+from music import load, Song, Track, Note, midi_to_song, song_to_text
+
+# Parse a .music file
+song = load("path/to/song.music")
+
+# Play through speakers
+song.play()
+
+# Export
+song.save("out.wav")              # WAV file
+song.to_midi("out.mid")           # Standard MIDI File
+
+# Inspect
+song.show()                       # print track summary to stdout
+print(song.total_beats())         # total duration in beats
+text = song.to_text()             # Song → .music DSL text (via MIDI roundtrip)
+```
+
+### Building a song in code
+
+```python
+from music import Song, Track, Note
+
+song = Song()
+song.tempo = 120
+song.name = "Code Song"
+
+track = Track("melody", "piano", vol=0.5, pan=0.0)
+track.line("C4 q E4 q G4 q C5 q", key_acc={})
+song.add(track)
+
+song.save("code_song.wav")
+```
+
+### Importing MIDI
+
+```python
+from music import midi_to_song
+
+song = midi_to_song("file.mid")   # returns a Song object
+song.play()
 ```
 
 ---
@@ -64,6 +122,13 @@ key: C              # major: C G D A E B F# C# F Bb Eb Ab Db Gb Cb
 key: Am             # minor: Am Em Bm F#m C#m Dm Gm Cm Fm Bbm
 key: none           # no key signature
 time: 4/4           # time signature (default 4/4)
+```
+
+### Comments
+
+```
+# This is a full-line comment
+C4 q  # This is an inline comment
 ```
 
 ### Tracks
@@ -86,6 +151,12 @@ Track header options:
 | `delay` | 0.0–1.0 | Delay mix |
 | `swing` | 0.0–1.0 | Swing/shuffle amount |
 | `mute` | — | Silences the track |
+
+**Shorthand** — create a track with just an instrument name:
+
+```
+inst: piano 0.5 0.0     # name=instrument, vol=0.5, pan=0.0
+```
 
 Effect lines (placed inside the track body, one per line):
 
@@ -133,6 +204,13 @@ C4 _0.253       # fractional beats (e.g. from MIDI import)
 R q    R e    R _2    rest q    _ q
 ```
 
+### Bar lines
+
+```
+|             # bar line (warns if bar overflows)
+||            # double bar line
+```
+
 ### Sections & Repeats
 
 ```
@@ -149,6 +227,18 @@ Repeat a block N times:
 ```
 [ C4 q E4 q G4 q ] x4
 [ C4 e R e ] x32
+```
+
+**Multi-line repeats:**
+```
+[ C4 q E4 q
+  G4 q C5 q ] x3
+```
+
+**Volta endings** (1st and 2nd endings):
+```
+[1 C4 q D4 q E4 q]      # play on first pass
+[2 C4 q D4 q F4 q]      # play on second pass
 ```
 
 ### Chords
@@ -223,6 +313,14 @@ Apply directly before a pitch name. Boosts note velocity:
 | `^` | Marcato | ×1.5 |
 | `+` | Sforzando | ×1.8 |
 
+### Note velocity override
+
+```
+C4 q @0.63     # set C4 velocity to 0.63 (overrides default 0.8)
+```
+
+`@N` after a note sets its velocity directly (0.0–1.0).
+
 ### Expression effects
 
 ```
@@ -283,6 +381,70 @@ key: Fm            # Bb, Eb, Ab, Db
 
 Use `key: none` or `key: C` for no accidentals. Accidentals on individual notes (`C#4`, `Bb3`) override the key signature.
 
+### Transpose
+
+```
+@ transpose 2     # all subsequent notes up 2 semitones
+@ transpose -12   # down one octave
+```
+
+### Voice assignment
+
+```
+voice:2           # assign subsequent notes to MIDI voice 2
+```
+
+Used for MIDI roundtrip fidelity when a channel contains multiple independent lines.
+
+### Patterns
+
+Reusable note sequences:
+
+**Single-line definition:**
+```
+@pattern arp = C4 e E4 e G4 e C5 e
+```
+
+**Multi-line definition:**
+```
+@pattern bassline
+C2 e G2 e C3 e G2 e
+Ab1 e Eb2 e Ab2 e Eb2 e
+@end
+```
+
+**Invocation:**
+```
+@arp
+@bassline
+```
+
+### Step sequencer
+
+```
+@steps 8 { C4 . D4 . E4 . F4 . }
+```
+
+Each step gets `current_duration / nsteps` duration. Dots (`.`) or `R` produce rests within the step pattern.
+
+### Random / stochastic commands
+
+```
+@coin C4 D4 E4          # 50% chance to play one random note
+@coin 0.3 C4 D4         # 30% chance
+@rand C4 D4 E4 F4       # always play one random note from the list
+@choose C4 D4 E4        # play ALL notes, each shortened proportionally
+@shuffle C4 D4 E4 F4    # play all notes in random order
+```
+
+### Include
+
+```
+@include other_song.music    # import tracks from another .music file
+```
+
+Tracks from the included file are added to the current song using the current track's instrument.
+
 ### Track mute
 
 ```
@@ -309,6 +471,8 @@ Add `mute` anywhere in the track header to silence it during playback. Useful fo
 | `piano` | — | Acoustic piano (5 partials + decay) |
 | `strings` | `pad` | Warm string pad (slow attack) |
 | `flute` | — | Soft breathy flute |
+| `brass` | — | Bright sustained brass (trumpet/trombone) |
+| `reed` | `sax` | Nasal woodwind (sax/oboe/clarinet) |
 | `noise` | — | White noise |
 
 ---

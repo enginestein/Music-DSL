@@ -77,3 +77,34 @@ def _flute(t, f):
     s = np.sin(2*np.pi*f*t) + 0.3*np.sin(2*np.pi*f*2*t)
     env = np.minimum(1.0, t / 0.03) * np.exp(-0.5*t)
     return s * env
+
+@inst('brass')
+def _brass(t, f):
+    """Bright, sustained brass tone (trumpet/trombone/horn-ish) with a
+    fast attack overshoot -- the extra high harmonic 'blip' that fades
+    quickly right at note-on is what reads as a brass buzz rather than
+    a flat synth tone."""
+    s = np.sin(2*np.pi*f*t)
+    s += 0.55 * np.sin(2*np.pi*f*2*t)
+    s += 0.35 * np.sin(2*np.pi*f*3*t)
+    s += 0.20 * np.sin(2*np.pi*f*4*t)
+    s += 0.10 * np.sin(2*np.pi*f*5*t)
+    s += 0.35 * np.sin(2*np.pi*f*6*t) * np.exp(-20*t)
+    env = np.minimum(1.0, t / 0.015)
+    s = s * env
+    return s / np.max(np.abs(s)) if np.max(np.abs(s)) > 0 else s
+
+@inst('reed')
+@inst('sax')
+def _reed(t, f):
+    """Reedy, slightly nasal woodwind tone (sax/oboe/clarinet-ish):
+    odd-harmonic emphasis plus a touch of breath noise, sustained."""
+    s = np.sin(2*np.pi*f*t)
+    s += 0.50 * np.sin(2*np.pi*f*3*t)
+    s += 0.30 * np.sin(2*np.pi*f*5*t)
+    s += 0.20 * np.sin(2*np.pi*f*2*t)
+    s += 0.15 * np.sin(2*np.pi*f*7*t)
+    s += 0.04 * np.random.uniform(-1, 1, len(t))
+    env = np.minimum(1.0, t / 0.02)
+    s = s * env
+    return s / np.max(np.abs(s)) if np.max(np.abs(s)) > 0 else s

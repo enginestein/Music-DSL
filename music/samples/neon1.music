@@ -1,0 +1,356 @@
+tempo: 116   name: Neon Horizon   key: Am   time: 4/4
+
+# ============================================================
+#  NEON HORIZON — futuristic synthwave / outrun
+#
+#  Song map (44 bars @ 116 BPM):
+#    intro - verse1 - build - chorus1 - breakdown -
+#    build2 - chorus2 - outro
+#
+#  Chords:
+#    verse/build loop = Am7 - Fmaj7 - Cmaj7 - G   (i-VI-III-VII)
+#    chorus loop       = Am - G - F - E            (Andalusian cadence,
+#                         E major borrows the raised 7th from harmonic
+#                         minor — the classic "80s driving" sound)
+#
+#  Seven tracks: pad (atmosphere), bass (drive), kick + hats
+#  (rhythm), arp (motion), riser (intro sweep), lead (sax hook).
+#  All rhythm/harmony tracks total exactly 176 beats (44 bars) so
+#  everything stays locked in sync; riser is intentionally short —
+#  it only lives in the intro, like a real transition FX layer.
+# ============================================================
+
+
+-- pad: strings 0.35 0.0 reverb:0.5 delay:0.25 --
+adsr:0.6 0.3 0.8 0.6
+filter:lp 1800 0.6
+
+[intro]
+< Am7 w  Fmaj7 w  Cmaj7 w  G w >
+
+[verse1]
+mp
+Am7 w  Fmaj7 w  Cmaj7 w  G w
+Am7 w  Fmaj7 w  Cmaj7 w  G w
+
+[build]
+mf
+filter:lp 2200 0.65
+Am7 w  Fmaj7 w  Cmaj7 w  G w
+
+[chorus1]
+f
+Am w  G w  F w  E w
+Am w  G w  F w  E w
+
+[breakdown]
+p
+filter:lp 700 0.5
+Am9 h  Am9 h
+Fmaj7 h  Fmaj7 h
+Cmaj7 h  Cmaj7 h
+G h  G h
+
+[build2]
+mf
+filter:lp 1600 0.6
+Am7 w  Fmaj7 w  Cmaj7 w  G w
+
+[chorus2]
+f
+filter:lp 2400 0.7
+Am w  G w  F w  E w
+Am w  G w  F w  E w
+
+[outro]
+mp
+Am7 h  G h
+Fmaj7 h  Am7 h
+Am7 w ~ Am7 w
+||
+
+
+-- bass: sawtooth 0.38 0.0 --
+filter:lp 450 0.8
+dist:0.12
+humanize timing:0.01 vel:0.05
+
+@pattern bassA = >A2 e A2 e A3 e A2 e E3 e A2 e A3 e A2 e
+@pattern bassF = >F2 e F2 e F3 e F2 e C3 e F2 e F3 e F2 e
+@pattern bassC = >C2 e C2 e C3 e C2 e G2 e C2 e C3 e C2 e
+@pattern bassG = >G2 e G2 e G3 e G2 e D3 e G2 e G3 e G2 e
+@pattern bassE = >E2 e E2 e E3 e E2 e B2 e E2 e E3 e E2 e
+
+[intro]
+R w  R w  R w  R w    # bass tacet — let it drop in at the verse
+
+[verse1]
+mp
+@bassA @bassF @bassC @bassG
+@bassA @bassF @bassC @bassG
+
+[build]
+mf
+filter:lp 900 0.8
+@bassA @bassF @bassC @bassG
+
+[chorus1]
+f
+filter:lp 1400 0.9
+dist:0.2
+@bassA @bassG @bassF @bassE
+@bassA @bassG @bassF @bassE
+
+[breakdown]
+p
+filter:lp 300 0.5
+A2 h  E2 h
+F2 h  C2 h
+C2 h  G2 h
+G2 h  D2 h
+
+[build2]
+mf
+filter:lp 700 0.8
+@bassA @bassF @bassC @bassG
+
+[chorus2]
+f
+filter:lp 1800 1.0
+lfo:filter 3 300 1200
+dist:0.25
+@bassA @bassG @bassF @bassE
+@bassA @bassG @bassF @bassE
+
+[outro]
+mp
+filter:lp 500 0.6
+A2 h  A2 h
+G2 h  G2 h
+F2 h  F2 h
+A2 w
+||
+
+
+-- kick: pluck 0.42 0.0 --
+filter:lp 150 1.0
+adsr:0.001 0.08 0.0 0.05
+
+[intro]
+R w  R w  R w  R w
+
+[verse1]
+mp
+[ @steps 4 { C1 . C1 . } ] x8
+
+[build]
+mf
+[ @steps 4 { C1 . C1 C1 } ] x4
+
+[chorus1]
+f
+[ @steps 4 { C1 C1 C1 C1 } ] x8
+
+[breakdown]
+p
+[ @steps 4 { C1 . . . } ] x4
+
+[build2]
+mf
+[ @steps 4 { C1 . C1 C1 } ] x4
+
+[chorus2]
+f
+[ @steps 4 { C1 C1 C1 C1 } ] x8
+
+[outro]
+mp
+[ @steps 4 { C1 . . . } ] x3
+R w
+||
+
+
+-- hats: noise 0.18 0.3 --
+filter:hp 6000 0.5
+adsr:0.001 0.03 0.0 0.02
+swing:0.1
+humanize timing:0.015 vel:0.08
+
+[intro]
+R w  R w  R w  R w
+
+[verse1]
+mp
+[ @steps 8 { C4. C4. C4. C4. C4. C4. C4. C4. } ] x8
+
+[build]
+mf
+[ @steps 8 { C4. C4. C4. C4. C4. C4. C4. >C4. } ] x4
+
+[chorus1]
+f
+[ @steps 8 { >C4. C4. C4. C4. >C4. C4. C4. C4. } ] x8
+
+[breakdown]
+p
+[ @steps 8 { C4. . C4. . C4. . C4. . } ] x4
+
+[build2]
+mf
+[ @steps 8 { C4. C4. C4. C4. C4. C4. C4. >C4. } ] x4
+
+[chorus2]
+f
+[ @steps 8 { >C4. C4. C4. C4. >C4. C4. C4. C4. } ] x8
+
+[outro]
+p
+[ @steps 8 { C4. . C4. . . . . . } ] x3
+R w
+||
+
+
+-- arp: square 0.28 -0.35 delay:0.35 --
+filter:lp 900 0.7
+adsr:0.005 0.08 0.4 0.05
+
+@pattern arpA = A4 s C5 s E5 s G5 s E5 s C5 s A4 s C5 s A4 s C5 s E5 s G5 s E5 s C5 s A4 s C5 s
+@pattern arpF = F4 s A4 s C5 s E5 s C5 s A4 s F4 s A4 s F4 s A4 s C5 s E5 s C5 s A4 s F4 s A4 s
+@pattern arpC = C4 s E4 s G4 s B4 s G4 s E4 s C4 s E4 s C4 s E4 s G4 s B4 s G4 s E4 s C4 s E4 s
+@pattern arpG = G4 s B4 s D5 s G5 s D5 s B4 s G4 s B4 s G4 s B4 s D5 s G5 s D5 s B4 s G4 s B4 s
+@pattern arpE = E4 s G#4 s B4 s E5 s B4 s G#4 s E4 s G#4 s E4 s G#4 s B4 s E5 s B4 s G#4 s E4 s G#4 s
+
+[intro]
+R w  R w  R w  R w
+
+[verse1]
+mp
+@arpA @arpF @arpC @arpG
+@arpA @arpF @arpC @arpG
+
+[build]
+mf
+filter:lp 1300 0.75
+lfo:filter 2 300 1000
+@arpA @arpF @arpC @arpG
+
+[chorus1]
+f
+filter:lp 2200 0.8
+@arpA @arpG @arpF @arpE
+@arpA @arpG @arpF @arpE
+
+[breakdown]
+p
+filter:lp 600 0.6
+?0.5
+@arpA @arpF
+?1.0
+@arpC @arpG
+
+[build2]
+mf
+filter:lp 1500 0.75
+@arpA @arpF @arpC @arpG
+
+[chorus2]
+f
+filter:lp 2600 0.85
+lfo:filter 3 400 1800
+@ transpose 12
+@arpA @arpG
+@ transpose -12
+@arpF @arpE
+@ transpose 12
+@arpA @arpG
+@ transpose -12
+@arpF @arpE
+
+[outro]
+mp
+filter:lp 700 0.6
+?0.7
+@arpA @arpG
+?1.0
+@arpF
+R w
+||
+
+
+-- riser: noise 0.15 0.0 reverb:0.6 --
+filter:lp 200 0.9
+lfo:filter 0.5 150 400
+
+[intro]
+< R q  [ C4 s ] x60 >
+||
+
+
+-- lead: sax 0.4 0.15 reverb:0.45 delay:0.2 --
+adsr:0.02 0.1 0.75 0.15
+vibrato:5
+portamento:0.08
+
+[intro]
+R w  R w  R w  R w
+
+[verse1]
+R w  R w  R w  R w
+R w  R w  R w  R w
+
+[build]
+p
+{C5 D5} >E5~ q  D5~ e  C5 e  R h
+R w  R w  R w
+
+[chorus1]
+f
+{C5 D5} >E5~ q  D5~ e  C5 e  E5 q  A4 q
+>D5~ q  B4~ e  G4 e  B4 q  D5 q
+>C5~ q  A4~ e  F4 e  A4 q  C5 q
+>B4~ q  G#4~ e  E4 e  G#4 q.  B4 e
+
+>E5~ q  D5~ e  C5 e  E5 q  A4 q
+>D5~ q  B4~ e  G4 e  B4 q  D5 q
+>C5~ q  A4~ e  F4 e  A4 q  C5 q
+>B4 q  3:2 {G#4 A4 B4}  E4 q
+
+[breakdown]
+p
+vibrato:7
+portamento:0.15
+A4~ q  E5~ e  D5 e  C5 h
+C5~ q  A4~ e  G4 e  F4 h
+G4~ q  E4~ e  C4 e  E4 h
+D4~ q.  B3 e  G3 h
+
+[build2]
+mp
+[ A4 q  C5 q  E5 q  G5 q
+  A4 q  C5 q  E5 q
+  [1 G5 q]
+  [2 A5 q] ] x2
+
+[chorus2]
+f
+vibrato:5
+portamento:0.08
+{C5 D5} >E5~ q  D5~ e  C5 e  E5 q  A4 q
+>D5~ q  B4~ e  G4 e  B4 q  D5 q
+>C5~ q  A4~ e  F4 e  A4 q  C5 q
+>B4~ q  G#4~ e  E4 e  G#4 q.  B4 e
+
+>E5~ q  D5~ e  C5 e  >E6 h
+>D5~ q  B4~ e  G4 e  >D6 q  R q
+>C5~ q  A4~ e  F4 e  >C6 h
+>B4 q  3:2 {G#5 A5 B5}  E5 q
+
+[outro]
+p
+vibrato:4
+portamento:0.2
+A4~ h.  E5 q
+C5 w
+A4 h  R h
+A4 w
+||

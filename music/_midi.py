@@ -1,10 +1,51 @@
 import struct
+import warnings
 from pathlib import Path
 from .models import Song, Track, Note
 from ._pitch import midi_to_name
 
 _DUR_CODES = [(4.0, 'w'), (2.0, 'h'), (1.0, 'q'), (0.5, 'e'),
               (0.25, 's'), (0.125, 't'), (0.0625, 'x')]
+
+# Channel index 9 (MIDI channel 10, 1-indexed) is the General MIDI
+# percussion channel. Unlike melodic channels, the note number there
+# selects *which drum/cymbal sound* plays -- it is not a pitch -- and
+# percussion channels normally never send a Program Change message, so
+# looking the "program" up in _GM_MAP (as melodic channels do) makes no
+# sense and used to silently fall back to program 0 ('piano'), making
+# every drum hit sound like an out-of-key piano note. Map each drum key
+# to whichever built-in synth voice best approximates its character.
+_GM_DRUM_MAP = {
+    35: 'bass', 36: 'bass', 37: 'pluck', 38: 'pluck', 39: 'noise',
+    40: 'pluck', 41: 'bass', 42: 'noise', 43: 'bass', 44: 'noise',
+    45: 'bass', 46: 'noise', 47: 'bass', 48: 'bass', 49: 'noise',
+    50: 'bass', 51: 'noise', 52: 'noise', 53: 'bell', 54: 'noise',
+    55: 'noise', 56: 'bell', 57: 'noise', 58: 'noise', 59: 'noise',
+    60: 'pluck', 61: 'pluck', 62: 'pluck', 63: 'pluck', 64: 'bass',
+    65: 'bell', 66: 'bass', 67: 'bell', 68: 'bell', 69: 'noise',
+    70: 'noise', 71: 'flute', 72: 'flute', 73: 'noise', 74: 'noise',
+    75: 'pluck', 76: 'pluck', 77: 'pluck', 78: 'noise', 79: 'noise',
+    80: 'bell', 81: 'bell',
+}
+
+_GM_DRUM_NAMES = {
+    35: 'Acoustic Bass Drum', 36: 'Bass Drum', 37: 'Side Stick',
+    38: 'Acoustic Snare', 39: 'Hand Clap', 40: 'Electric Snare',
+    41: 'Low Floor Tom', 42: 'Closed Hi-Hat', 43: 'High Floor Tom',
+    44: 'Pedal Hi-Hat', 45: 'Low Tom', 46: 'Open Hi-Hat',
+    47: 'Low-Mid Tom', 48: 'Hi-Mid Tom', 49: 'Crash Cymbal 1',
+    50: 'High Tom', 51: 'Ride Cymbal 1', 52: 'Chinese Cymbal',
+    53: 'Ride Bell', 54: 'Tambourine', 55: 'Splash Cymbal',
+    56: 'Cowbell', 57: 'Crash Cymbal 2', 58: 'Vibraslap',
+    59: 'Ride Cymbal 2', 60: 'Hi Bongo', 61: 'Low Bongo',
+    62: 'Mute Hi Conga', 63: 'Open Hi Conga', 64: 'Low Conga',
+    65: 'High Timbale', 66: 'Low Timbale', 67: 'High Agogo',
+    68: 'Low Agogo', 69: 'Cabasa', 70: 'Maracas',
+    71: 'Short Whistle', 72: 'Long Whistle', 73: 'Short Guiro',
+    74: 'Long Guiro', 75: 'Claves', 76: 'Hi Wood Block',
+    77: 'Low Wood Block', 78: 'Mute Cuica', 79: 'Open Cuica',
+    80: 'Mute Triangle', 81: 'Open Triangle',
+}
 
 _GM_MAP = {
     0: 'piano', 1: 'piano', 2: 'piano', 3: 'piano',
@@ -22,10 +63,10 @@ _GM_MAP = {
     44: 'strings', 45: 'strings', 46: 'sine', 47: 'sine',
     48: 'saw', 49: 'saw', 50: 'pad', 51: 'pad',
     52: 'saw', 53: 'saw', 54: 'saw', 55: 'saw',
-    56: 'square', 57: 'square', 58: 'square', 59: 'square',
-    60: 'square', 61: 'square', 62: 'square', 63: 'square',
-    64: 'sine', 65: 'sine', 66: 'sine', 67: 'sine',
-    68: 'sine', 69: 'sine', 70: 'sine', 71: 'sine',
+    56: 'brass', 57: 'brass', 58: 'brass', 59: 'brass',
+    60: 'brass', 61: 'brass', 62: 'brass', 63: 'brass',
+    64: 'reed', 65: 'reed', 66: 'reed', 67: 'reed',
+    68: 'reed', 69: 'reed', 70: 'reed', 71: 'reed',
     72: 'flute', 73: 'flute', 74: 'flute', 75: 'flute',
     76: 'flute', 77: 'flute', 78: 'flute', 79: 'flute',
     80: 'saw', 81: 'saw', 82: 'saw', 83: 'saw',
@@ -247,12 +288,32 @@ def midi_to_song(fn):
             elif ev[1] in ('note_on', 'note_off'):
                 all_events.append(ev)
 
-    all_events.sort(key=lambda x: x[0])
+    # Break ties at the same tick with note_off before note_on, so a
+    # same-tick retrigger of a note (off then on) doesn't get processed
+    # out of order and silently swallow the note that's ending.
+    all_events.sort(key=lambda x: (x[0], 0 if x[1] == 'note_off' else 1))
     tempos.sort(key=lambda x: x[0])
 
-    song_tempo = 120.0
-    if tempos:
-        song_tempo = tempos[0][1]
+    # This DSL has no concept of a mid-song tempo change (a Song has one
+    # constant tempo), so previously only the *first* tempo event's BPM
+    # was used, even if it covered a handful of ticks before changing.
+    # Use a tick-duration-weighted average across the whole file instead,
+    # which tracks the source file's overall pacing much more closely.
+    end_tick = max((ev[0] for ev in all_events), default=0)
+    if len(tempos) <= 1:
+        song_tempo = tempos[0][1] if tempos else 120.0
+    else:
+        weighted = 0.0
+        for idx, (t_tick, bpm) in enumerate(tempos):
+            seg_end = tempos[idx + 1][0] if idx + 1 < len(tempos) else end_tick
+            weighted += max(0, seg_end - t_tick) * bpm
+        span = max(1, end_tick - tempos[0][0])
+        song_tempo = weighted / span
+        warnings.warn(
+            f"MIDI file has {len(tempos)} tempo changes; this format only "
+            f"supports a single constant tempo, so a duration-weighted "
+            f"average of {song_tempo:.1f} BPM is used instead"
+        )
 
     song = Song(tempo=song_tempo)
     song.name = Path(fn).stem
@@ -286,45 +347,33 @@ def midi_to_song(fn):
         notes_data = channel_note_data[ch]
         notes_data.sort(key=lambda x: x[0])
 
+        if ch == 9:
+            # Percussion channel: the note number picks a drum/cymbal
+            # sound, not a pitch, so group by drum key (not by temporal
+            # overlap+program) and give each key its own fitting voice.
+            by_key = {}
+            for note_data in notes_data:
+                by_key.setdefault(note_data[2], []).append(note_data)
+            for key in sorted(by_key):
+                inst = _GM_DRUM_MAP.get(key, 'noise')
+                name = _GM_DRUM_NAMES.get(key, f'Drum {key}')
+                for vi, voice in enumerate(_split_voices(by_key[key])):
+                    tr = Track(name=f"{name} v{vi+1}" if vi > 0 else name,
+                               inst=inst, vol=0.5, pan=0.0)
+                    _fill_track_from_voice(tr, voice, ticks_per_qn)
+                    if tr.notes:
+                        song.add(tr)
+            continue
+
         prog = channel_programs.get(ch, (0, 0))[1]
         inst = _GM_MAP.get(prog, 'sine')
         name = _CHANNEL_NAMES[prog] if prog < len(_CHANNEL_NAMES) else f'Channel {ch + 1}'
 
-        # Split overlapping notes into separate voices (polyphonic tracks)
-        voices = []  # list of tracks, each track is a list of (start_tick, end_tick, midi_note, velocity)
-        for note_data in notes_data:
-            start_tick, end_tick, midi_note, velocity = note_data
-            placed = False
-            # Try to place in an existing voice whose last note ends before this one starts
-            for voice in voices:
-                if not voice or voice[-1][1] <= start_tick:
-                    voice.append(note_data)
-                    placed = True
-                    break
-            if not placed:
-                voices.append([note_data])
-
-        # Create a Song track for each voice
-        for vi, voice in enumerate(voices):
+        # Split overlapping notes into separate voices (polyphonic tracks),
+        # then build a Song track per voice.
+        for vi, voice in enumerate(_split_voices(notes_data)):
             tr = Track(name=f"{name} v{vi+1}" if vi > 0 else name, inst=inst, vol=0.5, pan=0.0)
-            current_tick = 0
-
-            for start_tick, end_tick, midi_note, velocity in voice:
-                if start_tick > current_tick:
-                    rd = (start_tick - current_tick) / ticks_per_qn
-                    if rd > 0.001:
-                        tr.notes.append(Note('R', rd, 0))
-
-                dur = (end_tick - start_tick) / ticks_per_qn
-                if dur <= 0.001:
-                    current_tick = end_tick
-                    continue
-
-                note_name = midi_to_name(midi_note)
-                vel = min(1.0, velocity / 127.0)
-                tr.notes.append(Note(note_name, dur, vel))
-                current_tick = end_tick
-
+            _fill_track_from_voice(tr, voice, ticks_per_qn)
             if tr.notes:
                 song.add(tr)
 
@@ -332,6 +381,44 @@ def midi_to_song(fn):
         raise ValueError("No notes found in MIDI file")
 
     return song
+
+
+def _split_voices(notes_data):
+    """Split possibly-overlapping (start_tick, end_tick, note, vel) tuples
+    into non-overlapping voices, each a chronological list with no two
+    notes playing at once (so it can become one monophonic Track)."""
+    voices = []
+    for note_data in notes_data:
+        start_tick = note_data[0]
+        placed = False
+        for voice in voices:
+            if not voice or voice[-1][1] <= start_tick:
+                voice.append(note_data)
+                placed = True
+                break
+        if not placed:
+            voices.append([note_data])
+    return voices
+
+
+def _fill_track_from_voice(tr, voice, ticks_per_qn):
+    """Append rests/notes to `tr` reproducing the timing of `voice`."""
+    current_tick = 0
+    for start_tick, end_tick, midi_note, velocity in voice:
+        if start_tick > current_tick:
+            rd = (start_tick - current_tick) / ticks_per_qn
+            if rd > 0.001:
+                tr.notes.append(Note('R', rd, 0))
+
+        dur = (end_tick - start_tick) / ticks_per_qn
+        if dur <= 0.001:
+            current_tick = end_tick
+            continue
+
+        note_name = midi_to_name(midi_note)
+        vel = min(1.0, velocity / 127.0)
+        tr.notes.append(Note(note_name, dur, vel))
+        current_tick = end_tick
 
 
 def song_to_text(song):
@@ -369,7 +456,12 @@ def song_to_text(song):
             if n.rest:
                 line_notes.append(f"R {dc}")
             else:
-                line_notes.append(f"{n.pitch} {dc}")
+                # Preserve velocity (e.g. from MIDI) via the "@vel" note
+                # suffix the parser already supports -- without this, every
+                # re-imported note silently reverted to the default 0.8
+                # velocity, so a .music export always played back flatter/
+                # different than the Song rendered straight from the MIDI.
+                line_notes.append(f"{n.pitch} {dc} @{n.velocity:.2f}")
             pos += n.duration
 
         if line_notes:

@@ -108,7 +108,13 @@ class Track:
     def line(self, text, key_acc={}):
         text = text.replace('|', ' | ').replace('||', ' || ')
         text = text.replace('(', ' ( ').replace(')', ' ) ')
-        text = text.replace('{', ' { ').replace('}', ' } ').replace('@', ' @ ')
+        text = text.replace('{', ' { ').replace('}', ' } ')
+        # Only pad a standalone '@' (command form, e.g. '@ transpose 2').
+        # An '@' directly followed by a number is a note/chord velocity
+        # suffix (e.g. 'C4 q @0.63') and must stay attached to its digits
+        # so it survives as a single token -- padding it here used to
+        # silently strip the velocity from every annotated note.
+        text = re.sub(r'@(?![\d.])', ' @ ', text)
         def _pad_dots(m):
             run = m.group(0)
             if m.start() == 0:
@@ -120,7 +126,7 @@ class Track:
                 idx = m.start() - 1
                 while idx >= 0 and (m.string[idx].isdigit() or m.string[idx] == '.'):
                     idx -= 1
-                if idx >= 0 and m.string[idx] == '_':
+                if idx >= 0 and m.string[idx] in ('_', '@', ':'):
                     return run
             return ' . ' * len(run)
         text = re.sub(r'\.+', _pad_dots, text)
