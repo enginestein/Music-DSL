@@ -457,23 +457,83 @@ Add `mute` anywhere in the track header to silence it during playback. Useful fo
 
 ## Instruments
 
+45 instruments organized by category. Each has a natural default ADSR envelope; override with `adsr:` in the track body.
+
+### Basic Waveforms
+
 | Name | Aliases | Description |
 |------|---------|-------------|
 | `sine` | — | Pure sine wave |
-| `square` | — | Square wave (hollow, video-game) |
-| `sawtooth` | `saw` | Buzzy saw wave |
-| `triangle` | `tri` | Mellow triangle wave |
-| `organ` | — | Classic organ (sine + clipped square) |
-| `bass` | — | Synth bass (fundamental + octave) |
-| `bell` | — | Tonal bell (exponential decay) |
-| `pluck` | — | Percussive noise pluck (drums) |
-| `guitar` | `nylon` | Steel-string guitar (harmonics + decay) |
-| `piano` | — | Acoustic piano (5 partials + decay) |
-| `strings` | `pad` | Warm string pad (slow attack) |
-| `flute` | — | Soft breathy flute |
-| `brass` | — | Bright sustained brass (trumpet/trombone) |
-| `reed` | `sax` | Nasal woodwind (sax/oboe/clarinet) |
+| `square` | — | Square wave (polyBLEP anti-aliased) |
+| `saw` | `sawtooth` | Saw wave (polyBLEP anti-aliased) |
+| `tri` | `triangle` | Mellow triangle wave |
 | `noise` | — | White noise |
+
+### Keyboard
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `piano` | — | Rich piano (inharmonic partials) |
+| `organ` | — | Hammond-style drawbar organ with Leslie tremolo |
+| `harpsichord` | — | Bright plucked keyboard (Karplus-Strong) |
+| `clavinet` | — | Funky electric keyboard |
+| `celesta` | — | Soft bell-like keyboard |
+
+### Plucked Strings
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `guitar` | — | Steel-string guitar (Karplus-Strong) |
+| `nylon` | — | Nylon-string guitar (warmer KS) |
+| `harp` | — | Warm resonant harp (KS, long decay) |
+| `banjo` | — | Bright twangy banjo (KS, high brightness) |
+| `sitar` | — | Buzzing Indian sitar (jawari + sympathetic resonance) |
+| `kalimba` | — | Thumb piano (soft metallic pluck) |
+
+### Bowed / Sustained
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `strings` | `pad` | 3-voice detuned string ensemble |
+| `bass` | — | Sub-oscillator bass with soft saturation |
+| `choir` | — | Vocal ensemble with formant shaping |
+
+### Wind
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `flute` | — | Pure tone with breath noise |
+| `brass` | — | Bright brass with attack blip |
+| `reed` | `sax` | Nasal woodwind (even+odd harmonics + breath) |
+| `accordion` | — | Free-reed with wet tuning tremolo |
+
+### Bells & Mallets
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `bell` | — | Inharmonic metallic bell |
+| `pluck` | — | Percussive noise burst |
+| `marimba` | — | Wooden bar (short inharmonic) |
+| `xylophone` | — | Bright wooden bar (shorter than marimba) |
+| `vibraphone` | — | Metal bar with motor tremolo |
+| `steel_drums` | — | Metallic tropical steel pan |
+
+### Percussion
+
+| Name | Aliases | Description |
+|------|---------|-------------|
+| `kick` | — | Bass drum (sine sweep + click) |
+| `snare` | — | Snare drum (tone + filtered noise) |
+| `hihat` | — | Closed hi-hat (short highpass noise) |
+| `hihat_open` | — | Open hi-hat (longer decay) |
+| `cymbal` | — | Crash cymbal (bright metallic noise) |
+| `ride` | — | Ride cymbal (noise + tonal ping) |
+| `tom` | — | Tom drum (pitched sine sweep) |
+| `clap` | — | Hand clap (layered noise bursts) |
+| `rimshot` | — | Rimshot (short click + tone) |
+| `cowbell` | — | Cowbell (two-tone metallic) |
+| `tambourine` | — | Tambourine (noise + metallic jingle) |
+| `maracas` | — | Maracas (short highpass shake) |
 
 ---
 
@@ -507,9 +567,11 @@ music --import-midi song.mid              # import & play
 music --import-midi song.mid out.music    # import → .music DSL file
 ```
 
-The importer maps General MIDI programs:
+The importer maps General MIDI programs to the closest built-in instrument:
 
-**Piano→piano** **Guitar→guitar** **Bass→bass** **Strings→strings/pad** **Organ→organ** **Flute→flute** **Percussion→noise**
+**Piano/Keys→piano,harpsichord,clavinet,celesta** **Guitar→guitar,nylon** **Bass→bass** **Strings→strings** **Pad→pad** **Organ→organ** **Accordion→accordion** **Brass→brass** **Woodwinds→reed,sax** **Flute→flute** **Choir→choir** **Mallets→marimba,xylophone,vibraphone,celesta** **Plucked→harp,banjo,sitar,kalimba,steel_drums** **Leads→saw,square,sine**
+
+Percussion channel (GM ch10) maps to dedicated drum instruments: `kick`, `snare`, `hihat`, `hihat_open`, `cymbal`, `ride`, `tom`, `clap`, `rimshot`, `cowbell`, `tambourine`, `maracas`.
 
 Polyphonic voices within a MIDI channel are automatically split into separate tracks. Duration codes use the raw `_N.NNN` format to preserve exact MIDI timing.
 
