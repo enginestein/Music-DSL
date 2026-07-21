@@ -1,5 +1,8 @@
+from __future__ import annotations
 import re
+import warnings
 from pathlib import Path
+from typing import Union, IO
 from collections import OrderedDict
 
 from .models import Song, Track, Note
@@ -113,6 +116,16 @@ def _expand_jump_markers(song):
             new_notes.append(n)
         tr.notes = [n for n in new_notes if not n.pitch.startswith('$label:')]
 
+def _expand_done_markers(song):
+    for tr in song.tracks:
+        done_idx = -1
+        for i, n in enumerate(tr.notes):
+            if n.pitch == '$done':
+                done_idx = i
+                break
+        if done_idx >= 0:
+            tr.notes = tr.notes[:done_idx]
+
 def _preprocess_voltas(text):
     result = []
     i = 0
@@ -138,7 +151,7 @@ def _preprocess_voltas(text):
             i += 1
     return ''.join(result)
 
-def load(text_or_file):
+def load(text_or_file: Union[str, Path, IO]) -> Song:
     if hasattr(text_or_file,'read'): text = text_or_file.read()
     else:
         p = Path(str(text_or_file))
@@ -188,6 +201,9 @@ def load(text_or_file):
                 vol_set = False; pan_set = False
                 _rawtokens = raw.split()
                 _ti = 0
+                if _rawtokens and _rawtokens[0] not in _INSTS and not any(
+                    _rawtokens[0].startswith(p) for p in ('vol:', 'pan:', 'reverb:', 'delay:', 'swing:', 'filter:', 'dist:', 'lfo:', 'humanize')):
+                    warnings.warn(f"unknown instrument '{_rawtokens[0]}' at line {lineno}, falling back to 'sine'")
                 while _ti < len(_rawtokens):
                     tok = _rawtokens[_ti]; _ti += 1
                     if tok in _INSTS: inst_name = tok
@@ -205,7 +221,7 @@ def load(text_or_file):
                         if len(p)>2: fq = float(p[2])
                     elif tok.startswith('dist:'):
                         try: da = clamp(float(tok.split(':')[1]),0,1)
-                        except: pass
+                        except (ValueError, TypeError): pass
                     elif tok == 'humanize' or tok.startswith('humanize:'):
                         params = tok.split(':',1)[1:]  # gets ['timing:0.02 vel:0.1'] or []
                         if not params and _ti < len(_rawtokens):
@@ -219,7 +235,7 @@ def load(text_or_file):
                         ps = [tok.split(':',1)[1].strip()]
                         while _ti < len(_rawtokens) and len(ps) < 4:
                             try: float(_rawtokens[_ti]); ps.append(_rawtokens[_ti]); _ti += 1
-                            except: break
+                            except (ValueError, TypeError): break
                         if len(ps)>=1 and ps[0]=='filter' and len(ps)>=3:
                             lr = float(ps[1]); ld = float(ps[2])
                             if len(ps)>=4: ff = float(ps[3])
@@ -228,7 +244,7 @@ def load(text_or_file):
                             f = float(tok)
                             if not vol_set: vol = clamp(f); vol_set = True
                             elif not pan_set: pan = clamp(f,-1,1); pan_set = True
-                        except: pass
+                        except (ValueError, TypeError): pass
                 tr = _new_tr(name, inst_name, vol, pan)
                 tr.mute = mute_flag
                 tr.rev = rev; tr.delay = dly; tr.sw = swng
@@ -286,7 +302,7 @@ def load(text_or_file):
                 continue
             if l.startswith('dist:'):
                 try: _tr().dist_amount = clamp(float(l.split(':',1)[1].strip()),0,1)
-                except: pass
+                except (ValueError, TypeError): pass
                 continue
             if l.startswith('humanize:'):
                 h = l.split(':',1)[1].strip().split()
@@ -302,8 +318,11 @@ def load(text_or_file):
                 p = Path(fn)
                 if p.exists():
                     sub = load(str(p))
+                    cur_inst = _tr().inst
                     for st in sub.tracks:
-                        st.inst = _tr().inst; song.add(st)
+                        if cur_inst != 'sine':
+                            st.inst = cur_inst
+                        song.add(st)
                 continue
 
             if l.startswith('@pattern') or (l.startswith('@') and '=' in l):
@@ -333,11 +352,19 @@ def load(text_or_file):
                 _tr().notes.append(Note(f'$jump:{nm}', 0, 0))
                 continue
 
+            if l == '@done' or l.startswith('@done') and len(l) == 5:
+                _tr().notes.append(Note('$done', 0, 0))
+                continue
+
             if l.startswith('[') and ']' in l and not l.startswith('[1') and not l.startswith('[2'):
                 inner = l[1:].split(']')[0].strip()
-                if inner and not inner[0].isdigit() and not (inner[0].isupper() and ':' in inner):
+                after = l.split(']',1)[1].strip()
+                is_label = (inner and ' ' not in inner
+                            and not inner[0].isdigit()
+                            and not (inner[0].isupper() and ':' in inner)
+                            and not after.startswith('x'))
+                if is_label:
                     _tr().notes.append(Note(f'$label:{inner}', 0, 0))
-                    after = l.split(']',1)[1].strip()
                     if after: _tr().line(after, key_acc)
                     continue
 
@@ -351,8 +378,13 @@ def load(text_or_file):
                 content, after = rest.split(']', 1)
                 cnt = 1; after = after.strip()
                 if after.startswith('x'):
-                    try: cnt = int(after[1:].strip())
-                    except: pass
+                    m = re.match(r'x(\d+)(.*)', after)
+                    if m:
+                        try: cnt = int(m.group(1))
+                        except (ValueError, TypeError): pass
+                        after = m.group(2).strip()
+                    else:
+                        after = after[1:].strip()
                 if content.strip():
                     t2 = Track(inst=_tr().inst)
                     t2.line(content.strip(), key_acc)
@@ -360,6 +392,7 @@ def load(text_or_file):
                         for n in t2.notes:
                             c = Note(n.pitch,n.duration,n.velocity)
                             c.group = n.group; _tr().notes.append(c)
+                if after: _tr().line(after, key_acc)
                 continue
 
             if l.startswith('['):
@@ -379,7 +412,7 @@ def load(text_or_file):
                     rest = rest.strip(); cnt = 1
                     if rest.startswith('x'):
                         try: cnt = int(rest[1:].strip())
-                        except: pass
+                        except (ValueError, TypeError): pass
                     for _ in range(cnt):
                         for n in repeat_notes:
                             c = Note(n.pitch,n.duration,n.velocity)
@@ -398,6 +431,7 @@ def load(text_or_file):
 
     if in_repeat: raise ValueError("error at end: unclosed repeat bracket '['")
     if pat_def: raise ValueError(f"error at end: unclosed @pattern {pat_name}")
+    _expand_done_markers(song)
     _expand_dc_markers(song)
     _expand_ds_markers(song)
     _expand_voltas(song)

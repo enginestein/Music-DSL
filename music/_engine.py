@@ -9,9 +9,20 @@ if _SD:
 if _PA:
     import pyaudio
 
+try:
+    from scipy.signal import lfilter as _scipy_lfilter
+    _HAS_SCIPY = True
+except ImportError:
+    _HAS_SCIPY = False
+
 def _reverb(signal, mix=0.0, decay=0.4):
     if mix <= 0: return signal
     delay = int(0.04 * SAMPLE_RATE)
+    if _HAS_SCIPY:
+        b = np.zeros(delay + 1); b[0] = 1.0
+        a = np.zeros(delay + 1); a[0] = 1.0; a[delay] = -decay
+        wet = _scipy_lfilter(b, a, signal)
+        return signal * (1 - mix) + wet * mix
     out = signal.copy()
     buf = np.zeros(delay)
     for i in range(len(signal)):
@@ -25,6 +36,13 @@ def _delay(signal, mix=0.0, time=0.3, fb=0.3):
     if mix <= 0: return signal
     d = int(time * SAMPLE_RATE)
     if d >= len(signal): return signal
+    if _HAS_SCIPY:
+        b = np.zeros(d + 1); b[0] = 1.0
+        a = np.zeros(d + 1); a[0] = 1.0; a[d] = -fb
+        wet = _scipy_lfilter(b, a, signal)
+        peak = np.max(np.abs(wet))
+        if peak > 1: wet /= peak * 1.1
+        return signal * (1 - mix) + wet * mix
     out = signal.copy()
     for i in range(d, len(signal)):
         out[i] += fb * out[i-d]

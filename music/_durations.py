@@ -16,4 +16,4 @@ def _parse_dur(val):
         if d: b *= 2 - 0.5**d
         return b
     try: return float(v)
-    except: return None
+    except (ValueError, TypeError): return None

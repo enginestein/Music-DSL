@@ -218,7 +218,7 @@ R q    R e    R _2    rest q    _ q
 C4 q  E4 q  G4 q
 @jump verse       # repeat indefinitely
 
-@done              # stop playback here
+@done              # stop playback here (rest of track ignored)
 ```
 
 `[label]` marks a position, `@jump label` jumps back to it. `@done` stops playback.
@@ -347,13 +347,14 @@ C4 q ?0.5 D4 q E4 q   # D4 has 50% chance of silence
 
 `<` starts a velocity ramp (starting velocity → ×1.4), `>` ends it. All non-rest notes between receive linearly increasing velocity.
 
-### Inline tempo changes
+### Inline tempo & time signature changes
 
 ```
 C4 q D4 q tempo:160 E4 q F4 q
+C4 q D4 q time:3/4 C4 q D4 q E4 q
 ```
 
-`tempo:BPM` inside a note sequence changes playback speed from that point forward. Also works as a file-level directive.
+`tempo:BPM` and `time:N/D` can appear inside a note sequence to change tempo or time signature mid-song. Also work as file-level directives.
 
 ### Tuplets
 
@@ -603,31 +604,6 @@ music --export song.music out.wav  # export to WAV audio file
 9. Reverb
 10. Delay
 11. Humanization (random timing & velocity)
-
----
-
-## Project Structure
-
-```
-├── music/                  # Python package
-│   ├── __init__.py         # Public API
-│   ├── __main__.py         # Entry point
-│   ├── cli.py              # Command-line interface
-│   ├── parser.py           # DSL parser (load/loads)
-│   ├── models.py           # Song, Track, Note + audio renderer
-│   ├── _engine.py          # Audio playback & effects
-│   ├── _waveform.py        # Terminal waveform visualizer
-│   ├── _instruments.py     # Sound synthesis (oscillators)
-│   ├── _midi.py            # MIDI import / export
-│   ├── _pitch.py           # Pitch → MIDI → frequency
-│   ├── _keys.py            # Key signature accidentals
-│   ├── _durations.py       # Duration string parser
-│   ├── _chords.py          # Chord symbol voicings
-│   ├── _constants.py       # Audio constants (44100Hz, 16-bit, stereo)
-│   └── samples/            # Demo song files
-├── pyproject.toml
-└── README.md
-```
 
 ---
 
