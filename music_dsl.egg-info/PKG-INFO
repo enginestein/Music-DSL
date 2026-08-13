@@ -1,11 +1,8 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: music-dsl
-Version: 2.0.1
+Version: 2.0.3
 Summary: Program your own music!
-Home-page: UNKNOWN
-License: UNKNOWN
-Platform: UNKNOWN
+Requires-Python: >=3.8
 License-File: LICENSE
-
-UNKNOWN
-
+Requires-Dist: numpy
+Dynamic: license-file

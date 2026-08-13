@@ -129,7 +129,7 @@ def play_with_waveform(mix):
                     stalled = 0
                     pos = int(st.time * SAMPLE_RATE)
                     progress = min(1.0, pos / len(mix))
-                except:
+                except Exception:
                     if progress >= 0.99:
                         break
                 _draw(amps, progress, total_secs, width)

@@ -1,3 +1,5 @@
+__version__ = '2.0.3'
+
 from .models import Note, Track, Song
 from .parser import load
 from .cli import main
