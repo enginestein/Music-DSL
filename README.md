@@ -29,6 +29,14 @@ pip install .
 pip install -e .        # editable mode (development)
 ```
 
+or
+
+```bash
+
+pip install music-dsl
+
+```
+
 ### System-wide install (Linux)
 
 ```bash
