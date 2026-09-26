@@ -1,1 +1,15 @@
-./music_dsl.egg-info
+__pycache__/
+*.py[cod]
+*.so
+
+build/
+dist/
+*.egg-info/
+.eggs/
+
+.venv/
+venv/
+.tox/
+.mypy_cache/
+.pytest_cache/
+.coverage
