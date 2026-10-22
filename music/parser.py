@@ -1,6 +1,5 @@
 from __future__ import annotations
-import re
-import warnings
+import re, math, warnings, random
 from pathlib import Path
 from typing import Union, IO
 from collections import OrderedDict
@@ -8,7 +7,8 @@ from collections import OrderedDict
 from .models import Song, Track, Note
 from ._keys import _key_accidentals
 from ._durations import _parse_dur
-from ._pitch import clamp
+from ._pitch import clamp, midi_to_name
+from ._chords import parse_chord
 from ._instruments import _INSTS
 
 def _expand_dc_markers(song):
@@ -126,6 +126,145 @@ def _expand_done_markers(song):
         if done_idx >= 0:
             tr.notes = tr.notes[:done_idx]
 
+def _notes_beats(notes):
+    """Beats occupied by a note list (chord groups count once)."""
+    t = Track('_tmp', 'sine'); t.notes = notes; return t.beats()
+
+def _apply_arrangement(song):
+    """Build each track's final notes from song.arrange + track.sections.
+
+    Section durations are the max length across all tracks; shorter tracks
+    are padded with rests so every track stays aligned. Sections may repeat
+    via 'arrange: intro x2 verse ...'. Tracks with no sections at all are
+    left untouched (e.g. @gen drums output or plain linear tracks).
+    """
+    if not song.arrange: return
+    sec_dur = {}
+    for name, _cnt in song.arrange:
+        d = 0.0
+        for tr in song.tracks:
+            if name in tr.sections:
+                d = max(d, _notes_beats(tr.sections[name]))
+        if d <= 0:
+            raise ValueError(f"error: section '{name}' in arrange: has no notes in any track")
+        sec_dur[name] = d
+    for tr in song.tracks:
+        if not tr.sections: continue
+        new_notes = []
+        gmap = {}; gnext = [1]
+        def _remap(n):
+            c = n.copy()
+            if c.group:
+                if c.group not in gmap:
+                    gmap[c.group] = gnext[0]; gnext[0] += 1
+                c.group = gmap[c.group]
+            return c
+        for name, cnt in song.arrange:
+            src = tr.sections.get(name, [])
+            pad = max(0.0, sec_dur[name] - _notes_beats(src))
+            for _ in range(max(1, cnt)):
+                for n in src:
+                    new_notes.append(_remap(n))
+                if pad > 1e-6:
+                    new_notes.append(Note('R', pad, 0))
+        tr.notes = new_notes
+        tr.sections = OrderedDict()
+
+_DRUM_STYLES = {
+    # (kick, snare, hat) as lists of (beat_offset, dur) within one 4/4 bar
+    'four':   {'kick': [(0,1),(1,1),(2,1),(3,1)], 'snare': [(1,1),(3,1)], 'hat': [(b*0.5,0.5) for b in range(8)]},
+    'rock':   {'kick': [(0,1),(2,1),(3.5,0.5)], 'snare': [(1,1),(3,1)], 'hat': [(b*0.5,0.5) for b in range(8)]},
+    'half':   {'kick': [(0,1)], 'snare': [(2,1)], 'hat': [(b*0.5,0.5) for b in range(8)]},
+    'break':  {'kick': [(0,0.5),(1.75,0.25),(3,0.5)], 'snare': [(1,0.5),(2.5,0.5),(3.5,0.5)],
+               'hat': [(b*0.25,0.25) for b in range(16)]},
+    'shuffle':{'kick': [(0,1),(2,1)], 'snare': [(1,1.5),(3,0.75)], 'hat': [(0,0.75),(1,0.25),(1.5,0.5),(2,0.75),(3,0.25),(3.5,0.5)]},
+}
+
+def _fill_bar(bar_len, hits, pitch='C2', vel=0.85):
+    """Turn (beat_offset, dur) hits into notes filling one bar."""
+    out = []; pos = 0.0
+    for off, dur in sorted(hits):
+        if off >= bar_len: break
+        dur = min(dur, bar_len - off)
+        if off > pos + 1e-6: out.append(Note('R', off - pos, 0))
+        out.append(Note(pitch, dur, vel))
+        pos = off + dur
+    if pos < bar_len - 1e-6: out.append(Note('R', bar_len - pos, 0))
+    return out
+
+def _gen_drums(song, style, nbars=None):
+    """Create kick/snare/hihat tracks grooving over nbars bars."""
+    if style not in _DRUM_STYLES:
+        raise ValueError(f"unknown drum style '{style}' (use: {', '.join(sorted(_DRUM_STYLES))})")
+    pat = _DRUM_STYLES[style]
+    bpb = song.beats_per_bar or 4
+    if nbars is None: nbars = max(1, len(song.progression))
+    specs = [('gen_kick', 'kick', pat['kick'], 0.65, 0.0),
+             ('gen_snare', 'snare', pat['snare'], 0.5, 0.0),
+             ('gen_hat', 'hihat', pat['hat'], 0.3, 0.15)]
+    for nm, inst, hits, vol, pan in specs:
+        if any(t.name == nm for t in song.tracks): continue
+        tr = Track(nm, inst, vol, pan)
+        tr.beats_per_bar = bpb
+        for _ in range(nbars):
+            tr.notes.extend(_fill_bar(bpb, hits))
+        song.add(tr)
+
+def _gen_line(song, tr, args):
+    """Handle '@gen <what> [opts]' using song.progression."""
+    if not song.progression:
+        raise ValueError("@gen needs a 'progression:' line before it")
+    if not args: raise ValueError("@gen needs a target: bass, pad, arp or drums")
+    what = args[0]; rest = args[1:]
+    bpb = song.beats_per_bar or 4
+    prog = song.progression
+    if what == 'drums':
+        raise ValueError("@gen drums is handled by the parser (deferred)")
+    step = 0.5
+    style = ''
+    oct_shift = 0
+    for tok in rest:
+        if tok in ('8ths','8th'): step = 0.5
+        elif tok in ('quarters','quarter','4ths'): step = 1.0
+        elif tok in ('half',): step = 2.0
+        elif tok in ('whole',): step = bpb
+        elif tok in ('16ths','16th'): step = 0.25
+        elif tok in ('up','down','ud','root','root5','root8','rand'): style = tok
+        elif tok.startswith('oct'): 
+            try: oct_shift = int(tok[3:] or '1') * 12
+            except ValueError: oct_shift = 12
+    g0 = tr._cur_group
+    for root, tones in prog:
+        if what == 'bass':
+            r = root - 24 + oct_shift   # two octaves down, bass register
+            if r < 24: r = root - 12 + oct_shift
+            fifth = r + 7
+            n = max(1, int(round(bpb / step)))
+            for k in range(n):
+                if style == 'root': m = r
+                elif style == 'root8': m = r + (12 if k % 2 else 0)
+                else: m = fifth if k % 2 else r
+                tr.notes.append(Note(midi_to_name(m), step, 0.8))
+        elif what == 'pad':
+            g0 += 1
+            dur = bpb
+            for m in tones:
+                n = Note(midi_to_name(m - 12 + oct_shift), dur, 0.55)
+                n.group = g0
+                tr.notes.append(n)
+        elif what == 'arp':
+            seq = [m + oct_shift for m in tones] + [tones[0] + 12 + oct_shift]
+            if style == 'down': seq = seq[::-1]
+            elif style == 'ud': seq = seq + seq[-2:0:-1]
+            elif style == 'rand': random.shuffle(seq)
+            nsteps = max(1, int(round(bpb / step)))
+            for k in range(nsteps):
+                m = seq[k % len(seq)]
+                tr.notes.append(Note(midi_to_name(m), step, 0.7))
+        else:
+            raise ValueError(f"@gen target '{what}' unknown (use bass, pad, arp or drums)")
+    tr._cur_group = g0
+
 def _preprocess_voltas(text):
     result = []
     i = 0
@@ -161,9 +300,13 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
 
     text = _preprocess_voltas(text)
     song = Song(); tr = None; key_acc = {}
+    cur_key_name = 'C'
     patterns = OrderedDict()
     in_repeat = False; repeat_count = 1; repeat_notes = []
     pat_def = False; pat_name = ''
+    cur_section = None; sec_track = None; sec_start = 0
+    defined_sections = set()
+    pending_drums = []
 
     def _tr():
         nonlocal tr
@@ -174,25 +317,89 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
     def _new_tr(name='', inst='sine', vol=0.5, pan=0.0):
         nonlocal tr
         tr = Track(name, inst, vol, pan)
-        tr.beats_per_bar = song.beats_per_bar; song.add(tr)
+        tr.beats_per_bar = song.beats_per_bar; tr.key_name = cur_key_name
+        song.add(tr)
         return tr
+
+    def _close_section():
+        """Move notes added since the last %section into that section."""
+        nonlocal cur_section, sec_track, sec_start
+        if cur_section is not None and sec_track is not None:
+            sec_track.sections[cur_section] = sec_track.notes[sec_start:]
+        cur_section = None; sec_track = None; sec_start = 0
 
     lines = text.split('\n')
     for lineno, rl in enumerate(lines, 1):
         l = rl.strip()
-        if not l or l.startswith('#'): continue
-        _cm = re.search(r'(?:^|\s)#', l)
+        if not l: continue
+        # full-line comment — but '#4' is a scale degree, not a comment
+        if l.startswith('#') and not re.match(r'^#[1-7]', l): continue
+        _cm = re.search(r"(?:^|\s)#(?![1-7][',]*(?:\s|$))", l)
         if _cm:
             l = l[:_cm.start()].strip()
             if not l: continue
 
         try:
+            if l.startswith('%') and len(l) > 1 and l[1:].strip():
+                _close_section()
+                cur_section = l[1:].strip().split()[0]
+                defined_sections.add(cur_section)
+                sec_track = _tr(); sec_start = len(sec_track.notes)
+                continue
+
+            if l.startswith('arrange:'):
+                song.arrange = []
+                for tok in l.split(':',1)[1].split():
+                    cnt = 1
+                    if tok.startswith('x') and tok[1:].isdigit():
+                        if song.arrange: song.arrange[-1][1] = int(tok[1:])
+                        continue
+                    song.arrange.append([tok, 1])
+                continue
+
+            if l.startswith('progression:') or l.startswith('prog:'):
+                song.progression = []
+                reps = 1; toks = l.split(':',1)[1].split()
+                if toks and toks[-1].startswith('x') and toks[-1][1:].isdigit():
+                    reps = int(toks[-1][1:]); toks = toks[:-1]
+                for tok in toks:
+                    ch = parse_chord(tok)
+                    if ch is None:
+                        raise ValueError(f"bad chord '{tok}' in progression:")
+                    song.progression.append((ch[0], ch))
+                song.progression = song.progression * max(1, reps)
+                continue
+
+            if l.startswith('master:'):
+                toks = l.split(':',1)[1].split(); i2 = 0
+                while i2 < len(toks):
+                    t2 = toks[i2]; i2 += 1
+                    if t2 in ('comp','compressor'):
+                        try:
+                            th = float(toks[i2]); ra = float(toks[i2+1]); i2 += 2
+                            song.master_comp = (clamp(th), max(1.0, ra))
+                        except (ValueError, IndexError):
+                            pass
+                    elif t2 in ('vol','volume'):
+                        try: song.master_vol = clamp(float(toks[i2])); i2 += 1
+                        except (ValueError, IndexError): pass
+                    elif t2 == 'reverb':
+                        try: song.rev = clamp(float(toks[i2])); i2 += 1
+                        except (ValueError, IndexError): pass
+                    elif t2 == 'delay':
+                        try: song.delay = clamp(float(toks[i2])); i2 += 1
+                        except (ValueError, IndexError): pass
+                continue
+
             if l.startswith('--') and '--' in l[2:]:
+                _close_section()
                 inner = l.strip('- ')
                 name = ''; inst_name = 'sine'; vol = 0.5; pan = 0.0
                 rev = 0.0; dly = 0.0; swng = 0.0
                 ft = ''; ff = 1000.0; fq = 0.7; da = 0.0
                 ht_t = 0.0; ht_v = 0.0; lr = 0.0; ld = 0.0
+                sc_src = ''; sc_amt = 0.0
+                deg_flag = False
                 mute_flag = False
                 if ':' in inner:
                     parts = inner.split(':',1)
@@ -202,8 +409,11 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                 _rawtokens = raw.split()
                 _ti = 0
                 if _rawtokens and _rawtokens[0] not in _INSTS and not any(
-                    _rawtokens[0].startswith(p) for p in ('vol:', 'pan:', 'reverb:', 'delay:', 'swing:', 'filter:', 'dist:', 'lfo:', 'humanize')):
-                    warnings.warn(f"unknown instrument '{_rawtokens[0]}' at line {lineno}, falling back to 'sine'")
+                    _rawtokens[0].startswith(p) for p in ('vol:', 'pan:', 'reverb:', 'delay:', 'swing:', 'filter:', 'dist:', 'lfo:', 'humanize', 'sidechain:', 'degrees:')):
+                    import difflib
+                    guess = difflib.get_close_matches(_rawtokens[0], _INSTS.keys(), n=1, cutoff=0.6)
+                    hint = f" (did you mean '{guess[0]}'?)" if guess else ""
+                    warnings.warn(f"unknown instrument '{_rawtokens[0]}' at line {lineno}{hint}, falling back to 'sine'")
                 while _ti < len(_rawtokens):
                     tok = _rawtokens[_ti]; _ti += 1
                     if tok in _INSTS: inst_name = tok
@@ -212,6 +422,23 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                     elif tok.startswith('reverb:'): rev = clamp(float(tok[7:]))
                     elif tok.startswith('delay:'): dly = clamp(float(tok[6:]))
                     elif tok.startswith('swing:'): swng = clamp(float(tok[6:]))
+                    elif tok.startswith('sidechain:'):
+                        # sidechain:TRACK  or  sidechain:TRACK:AMOUNT
+                        # (amount may also be the following bare number)
+                        sc = tok.split(':', 2)
+                        if len(sc) >= 2 and sc[1]:
+                            sc_src = sc[1]; sc_amt = 0.5
+                            if len(sc) >= 3:
+                                try: sc_amt = clamp(float(sc[2]), 0, 0.9)
+                                except (ValueError, TypeError): sc_amt = 0.5
+                            elif _ti < len(_rawtokens):
+                                try:
+                                    sc_amt = clamp(float(_rawtokens[_ti]), 0, 0.9)
+                                    _ti += 1
+                                except (ValueError, TypeError): pass
+                    elif tok.startswith('degrees:'):
+                        v = tok.split(':',1)[1].strip().lower()
+                        deg_flag = v not in ('off','none','0','false','no')
                     elif tok == 'mute':
                         mute_flag = True
                     elif tok.startswith('filter:'):
@@ -247,6 +474,9 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                         except (ValueError, TypeError): pass
                 tr = _new_tr(name, inst_name, vol, pan)
                 tr.mute = mute_flag
+                if deg_flag: tr.degrees = True
+                if sc_src:
+                    tr.sidechain_src = sc_src; tr.sidechain_amt = sc_amt
                 tr.rev = rev; tr.delay = dly; tr.sw = swng
                 if ft: tr.filter_type = ft; tr.filter_freq = ff; tr.filter_q = fq
                 if da: tr.dist_amount = da
@@ -256,6 +486,7 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                 continue
 
             if l.startswith('inst:'):
+                _close_section()
                 parts = l[5:].strip().split()
                 nm = parts[0]
                 v = float(parts[1]) if len(parts)>1 else 0.5
@@ -272,6 +503,8 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                 k = l.split(':',1)[-1].strip()
                 if k.lower() in ('none','c'): key_acc = {}
                 else: key_acc = _key_accidentals(k)
+                cur_key_name = k if k.lower() != 'none' else 'C'
+                if tr is not None: tr.key_name = cur_key_name
                 continue
             if l.startswith('time'):
                 v = l.split(':',1)[-1].strip().split()[0]
@@ -313,6 +546,33 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
                         elif p[0]=='vel': _tr().humanize_vel = clamp(float(p[1]),0,0.5)
                 continue
 
+            if l.startswith('degrees:'):
+                v = l.split(':',1)[1].strip().lower()
+                _tr().degrees = v not in ('off','none','0','false','no')
+                _tr().key_name = cur_key_name
+                continue
+            if l.startswith('sidechain:'):
+                parts = l.split(':',1)[1].split()
+                if parts:
+                    _tr().sidechain_src = parts[0]
+                    if len(parts)>1:
+                        try: _tr().sidechain_amt = clamp(float(parts[1]),0,0.9)
+                        except (ValueError, TypeError): _tr().sidechain_amt = 0.5
+                    else: _tr().sidechain_amt = 0.5
+                continue
+
+            if l.startswith('@gen'):
+                gargs = l.split(None,1)[1].split() if len(l.split(None,1))>1 else []
+                if gargs and gargs[0] == 'drums':
+                    # deferred: drum tracks must cover the full arranged song
+                    style = gargs[1] if len(gargs) > 1 else 'rock'
+                    if style not in _DRUM_STYLES:
+                        raise ValueError(f"unknown drum style '{style}' (use: {', '.join(sorted(_DRUM_STYLES))})")
+                    if style not in pending_drums: pending_drums.append(style)
+                else:
+                    _gen_line(song, _tr(), gargs)
+                continue
+
             if l.startswith('@include'):
                 fn = l.split(None,1)[-1].strip().strip('"\'')
                 p = Path(fn)
@@ -327,9 +587,15 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
 
             if l.startswith('@pattern') or (l.startswith('@') and '=' in l):
                 if '=' in l:
-                    pat_name = l.split('=')[0].strip().lstrip('@').strip()
+                    head = l.split('=',1)[0].strip()
+                    if head == '@pattern' or head.startswith('@pattern '):
+                        head = head[len('@pattern'):].strip()
+                    pat_name = head.lstrip('@').strip()
                     pat_text = l.split('=',1)[1].strip()
-                else: pat_name = l.split(None,1)[1].strip(); pat_text = ''; pat_def = True; continue
+                else:
+                    rest = l.split(None,1)[1:]
+                    if not rest: raise ValueError("@pattern needs a name")
+                    pat_name = rest[0].strip(); pat_text = ''; pat_def = True; continue
                 pat_t = Track('pattern','sine')
                 pat_t.line(pat_text, key_acc)
                 patterns[pat_name] = pat_t.notes; continue
@@ -431,6 +697,21 @@ def load(text_or_file: Union[str, Path, IO]) -> Song:
 
     if in_repeat: raise ValueError("error at end: unclosed repeat bracket '['")
     if pat_def: raise ValueError(f"error at end: unclosed @pattern {pat_name}")
+    _close_section()
+    song.defined_sections = defined_sections
+    _apply_arrangement(song)
+    if pending_drums:
+        # generate drums over the full arranged song length, not just
+        # the raw progression (arrange: may repeat sections)
+        total = max((t.beats() for t in song.tracks), default=0.0)
+        bpb = song.beats_per_bar or 4
+        nbars = max(1, math.ceil(total / bpb - 1e-6))
+        for style in pending_drums:
+            _gen_drums(song, style, nbars)
+    # drop the placeholder 'default' track if it got no notes
+    if (len(song.tracks) > 1 and song.tracks[0].name == 'default'
+            and not song.tracks[0].notes):
+        song.tracks.pop(0)
     _expand_done_markers(song)
     _expand_dc_markers(song)
     _expand_ds_markers(song)

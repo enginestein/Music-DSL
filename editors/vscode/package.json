@@ -1,0 +1,26 @@
+{
+  "name": "music-dsl",
+  "displayName": "Music DSL",
+  "description": "Syntax highlighting for the Music DSL (.music files)",
+  "version": "2.1.0",
+  "publisher": "music-dsl",
+  "engines": { "vscode": "^1.50.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "music",
+        "aliases": ["Music DSL", "music"],
+        "extensions": [".music"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "music",
+        "scopeName": "source.music",
+        "path": "./syntaxes/music.tmLanguage.json"
+      }
+    ]
+  }
+}

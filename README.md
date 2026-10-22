@@ -57,13 +57,60 @@ python3 -m music --help                 # alternative invocation
 
 ```
 music song.music                 play a song
+music song.music --loop 0        loop forever (Ctrl-C to stop)
+music song.music --from 30 --to 60   play only seconds 30–60
+music --check song.music         lint without playing (errors + warnings)
+music --new song.music --style synthwave   start from a template
+music --export song.music out.wav     export to WAV
+music --export song.music out.mp3     export to MP3 (needs ffmpeg or soundfile)
 music --midi song.music out.mid  export to MIDI
-music --export song.music.wav    export to WAV
 music --import-midi file.mid     import & play MIDI
 music --import-midi file.mid out.music  import MIDI → .music
+music --list-instruments         show all 45 instruments
+music --live                     interactive jamming session (REPL)
 music song.music --wave          play with waveform visualizer
 python3 -m music song.music      alternative invocation
 ```
+
+### Starting a new song
+
+```bash
+music --new my.song --style synthwave   # synthwave / rock / jazz / ambient / hiphop / blank
+music --new my.song --style rock --title "Thunder Road" --tempo 140
+```
+
+Each template is a complete, ready-to-play song — sections, chord progression,
+drums, bass and melody all wired up. Edit, render, done.
+
+### Checking a song
+
+```bash
+music --check my.song
+```
+
+Reports parse errors (unclosed blocks, unknown instruments with
+"did you mean" suggestions, unknown sections in `arrange:`) and warnings
+(unbalanced bars, tracks shorter than the arrangement, missing sections).
+
+### Interactive mode
+
+```bash
+music --live              # start a blank jam
+music --live song.music   # load a song and jam on top
+```
+
+REPL commands:
+
+```
+:track name instrument [vol] [pan]   start a track
+:tempo 132            :key Am        :dyn mf        :fx reverb:0.4
+:play                 render + hear the current sketch
+:undo                 step back       :clear   start over
+:save mysong.music    :quit
+```
+
+Anything that isn't a `:` command is a normal DSL line (notes, `@arp`,
+`@drums`, patterns, ...). Press Enter twice to render and listen.
 
 ---
 
@@ -72,7 +119,7 @@ python3 -m music song.music      alternative invocation
 Use Music DSL programmatically from Python:
 
 ```python
-from music import load, Song, Track, Note, midi_to_song, song_to_text
+from music import load, Song, Track, Note, midi_to_song, song_to_text, lint
 
 # Parse a .music file
 song = load("path/to/song.music")
@@ -80,14 +127,16 @@ song = load("path/to/song.music")
 # Play through speakers
 song.play()
 
-# Export
+# Export — .wav, .mp3 or .ogg
 song.save("out.wav")              # WAV file
+song.save("out.mp3")              # MP3 (needs ffmpeg or soundfile)
 song.to_midi("out.mid")           # Standard MIDI File
 
-# Inspect
+# Inspect & lint
 song.show()                       # print track summary to stdout
 print(song.total_beats())         # total duration in beats
 text = song.to_text()             # Song → .music DSL text (via MIDI roundtrip)
+errors, warnings = lint("path/to/song.music")   # two lists: errors, warnings
 ```
 
 ### Building a song in code
@@ -132,6 +181,24 @@ key: none           # no key signature
 time: 4/4           # time signature (default 4/4)
 ```
 
+**Song structure & generation:**
+
+```
+progression: Cm Ab Eb Bb        # chord loop, one bar per chord (see @gen)
+arrange: intro verse chorus chorus outro   # section order (see Sections)
+degrees:on                      # scale-degree note mode (see Degrees)
+```
+
+**Master bus:**
+
+```
+master: vol 0.9 comp 0.5 4 reverb 0.15 delay 0.1
+```
+
+`master:` controls the final mix — `vol` (0–1), `comp THRESH RATIO`
+(threshold 0–1 linear, ratio like `4` for 4:1), `reverb` and `delay`
+(wet mix applied to the whole song).
+
 ### Comments
 
 ```
@@ -158,7 +225,21 @@ Track header options:
 | `reverb` | 0.0–1.0 | Reverb mix |
 | `delay` | 0.0–1.0 | Delay mix |
 | `swing` | 0.0–1.0 | Swing/shuffle amount |
+| `sidechain` | `name[:amt]` | Duck this track under another (0.0–0.9, default 0.5) |
+| `degrees` | `on/off` | Scale-degree note mode for this track |
 | `mute` | — | Silences the track |
+
+**Sidechain ducking** — classic pumping, e.g. bass under a kick:
+
+```
+-- kick: kick 0.7 --
+C2 q C2 q C2 q C2 q
+
+-- bass: saw 0.5 sidechain:kick:0.6 --
+C2 w
+```
+
+Also works as a line inside the track body: `sidechain:kick 0.6`.
 
 **Shorthand** — create a track with just an instrument name:
 
@@ -249,6 +330,122 @@ Repeat a block N times:
 [2 C4 q D4 q F4 q]      # play on second pass
 ```
 
+### Song sections & arrangement
+
+`%name` starts a named section (different from `[label]`, which is for
+`@jump` flow control). Define sections per track, then set the song order
+with `arrange:`:
+
+```
+progression: Cm Ab Eb Bb
+arrange: intro verse chorus chorus outro
+
+-- bass: bass 0.5 --
+%intro
+R w
+%verse
+@gen bass 8ths
+%chorus
+@gen bass 8ths oct
+%outro
+C2 w
+
+-- lead: organ 0.4 --
+%chorus
+C5 e Eb5 e G5 e C6 e  G5 q Eb5 e C5 e
+```
+
+Rules:
+
+- Each section's length is the **longest** track's content in it — shorter
+  tracks are automatically rest-padded, so everything stays in sync.
+- `xN` repeats a section: `arrange: intro verse chorus x2 outro`.
+- Every section named in `arrange:` must be defined by at least one track
+  (otherwise `--check` reports an error).
+- Tracks with no `%sections` (or with `@gen drums`) play linearly from the
+  start — they ignore the arrangement.
+- After arranging, the song plays only in `arrange:` order; sections not
+  listed are dropped.
+
+### Chord progression & generators
+
+```
+progression: Cm Ab Eb Bb        # one bar per chord; xN repeats the loop
+```
+
+With a progression defined, `@gen` writes whole parts for you — one bar
+per chord:
+
+```
+-- bass: bass 0.5 --
+@gen bass 8ths          # eighth-note bass, root-fifth
+@gen bass quarters root # quarter notes, root only
+@gen bass 8ths root8 oct2   # +2 octaves (oct / oct2 / oct-1)
+
+-- pad: strings 0.2 --
+@gen pad                # whole-note chord bed (oct for upper voicing)
+
+-- arp: tri 0.3 --
+@gen arp 8ths           # up; also: down / ud / rand, plus 16ths/quarters
+
+@gen drums four         # creates gen_kick / gen_snare / gen_hat tracks
+```
+
+**Bass styles:** `root` (root only), `root5` (root-octave alternating —
+default), `root8` (octave-jumping).
+**Bass/pad/arp durations:** `8ths` (default), `quarters`, `16ths`, `half`,
+`whole`.
+**Drum styles:** `four`, `rock`, `half`, `break`, `shuffle`.
+
+`@gen drums` is deferred until the whole song is arranged, so the groove
+covers the full `arrange:` length.
+
+### Scale degrees (Nashville-style)
+
+```
+degrees:on
+1 q 4 q 5 q 6m h        # I IV V vi in the song's key
+```
+
+With `degrees:on` (or `degrees:` on a track header), pitch tokens become
+scale degrees relative to `key:`:
+
+- `1`–`7` — scale degree (`#`/`b` accidentals allowed: `b7`, `#4`)
+- `'` / `,` — octave up / down (`4'` = degree 4, one octave up)
+- chord quality suffix — `6m`, `1maj7`, `5m7` … plays the chord on that degree
+- `degrees:off` returns to normal note names
+
+`key: C` + `1 q 4 q 5 q` → C4 F4 G4; `key: Am` + `1 q` → A4.
+
+### Arpeggiator
+
+```
+@arp up C q             # C4 E4 G4 — one per beat
+@arp down Cmaj7 e       # B4 G4 E4 C4 in eighths
+@arp ud (C4 E4 G4) s    # up-down over a note list
+@arp rand C q           # randomized order
+```
+
+Directions: `up` (default), `down`, `ud` (up then down), `downup`,
+`rand`. Takes a chord symbol (`Cmaj7`), a parenthesized note list, or
+the previous chord; optional duration at the end.
+
+### Drum step shorthand
+
+```
+@drums 8 { x . x . x . X . }   # 8 steps, X = accent, g = ghost, . = rest
+@drums x-x-x-x | x-x-x-x       # bar-separated shorthand
+```
+
+Each step gets `current_duration / nsteps` — set the sticky duration
+first (`q` = quarter-note steps, `e` = eighths, ...). Notes land on the
+current track's instrument, so use a drum voice:
+
+```
+-- sn: snare 0.5 --
+e @drums 8 { x . g . x . x . }
+```
+
 ### Chords
 
 **Simultaneous notes** (parenthesized group):
@@ -299,7 +496,9 @@ C4. q                # staccato (50% duration)
 ppp  pp  p  mp  mf  f  ff  fff  sffz
 ```
 
-Set global dynamics for subsequent notes. `fp` starts loud then soft.
+Set global dynamics for subsequent notes. A bare dynamics word on its own
+line sets the level for **all following lines** in that track (useful for
+section-level dynamics). `fp` starts loud then soft.
 
 ```
 ppp = 0.15   pp = 0.25   p = 0.35   mp = 0.50
@@ -412,6 +611,7 @@ Reusable note sequences:
 **Single-line definition:**
 ```
 @pattern arp = C4 e E4 e G4 e C5 e
+@ost = C2 e G2 e C3 e G2 e          # shorthand: @name = ... works too
 ```
 
 **Multi-line definition:**
@@ -584,12 +784,17 @@ Percussion channel (GM ch10) maps to dedicated drum instruments: `kick`, `snare`
 
 Polyphonic voices within a MIDI channel are automatically split into separate tracks. Duration codes use the raw `_N.NNN` format to preserve exact MIDI timing.
 
-### Export to MIDI / WAV
+### Export to MIDI / WAV / MP3
 
 ```bash
-music --midi song.music out.mid    # export to Standard MIDI File
-music --export song.music out.wav  # export to WAV audio file
+music --midi song.music out.mid      # export to Standard MIDI File
+music --export song.music out.wav    # export to WAV audio file
+music --export song.music out.mp3    # MP3 — needs ffmpeg or the soundfile lib
+music --export song.music out.ogg    # OGG — same backends as MP3
 ```
+
+Without either backend installed, the export command fails with a clear
+message instead of writing a broken file.
 
 ---
 
@@ -612,6 +817,38 @@ music --export song.music out.wav  # export to WAV audio file
 9. Reverb
 10. Delay
 11. Humanization (random timing & velocity)
+
+### Mix bus
+1. Sidechain ducking (per-track, keyed off another track's onsets)
+2. Master compressor (`master: comp THRESH RATIO`)
+3. Master reverb & delay (`master: reverb X delay X`)
+4. Master volume + peak normalization
+
+---
+
+## Editors
+
+Syntax highlighting for `.music` files ships in [`editors/`](editors/):
+
+- **VS Code** — full extension in `editors/vscode/` (open the folder and press
+  `F5`, or package with `vsce` and install the `.vsix`)
+- **Vim / Neovim** — `editors/vim/syntax/music.vim` +
+  `editors/vim/ftdetect/music.vim` (copy into `~/.vim/` or `~/.config/nvim/`,
+  or use vim-plug pointing at `editors/vim`)
+
+See [`editors/README.md`](editors/README.md) for install details.
+
+---
+
+## Testing
+
+The test suite covers the parser, generators, arrangement, rendering, exports,
+CLI and the live REPL:
+
+```bash
+python3 -m pytest tests/ -q     # pytest
+python3 tests/test_dsl.py       # standalone (no pytest needed)
+```
 
 ---
 

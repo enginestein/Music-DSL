@@ -1,14 +1,15 @@
 from __future__ import annotations
 import math, re, warnings, random
 from pathlib import Path
+from collections import OrderedDict
 from typing import Optional, Union, IO
 import numpy as np
 
 from ._pitch import pitch_to_midi, midi_to_name, name_to_freq, clamp
-from ._keys import _apply_key
+from ._keys import _apply_key, _key_tonic_and_scale
 from ._durations import _parse_dur
 from ._instruments import _INSTS, _INST_ADSR
-from ._engine import _play, _save, _reverb, _delay
+from ._engine import _play, _save, _reverb, _delay, _compress
 from ._constants import SAMPLE_RATE, CHANNELS
 from ._chords import parse_chord
 
@@ -119,6 +120,34 @@ class Track:
         self.lfo_filter_rate = 0.0
         self.lfo_filter_depth = 0.0
         self.mute = False
+        # current global dynamic ('mf', 'ff', ...) — persists across lines
+        self.cur_dyn = ''
+        # %section blocks: name -> note list (filled by the parser)
+        self.sections = OrderedDict()
+        # scale-degree mode (Nashville-style '1 4 5 6m' relative to key)
+        self.degrees = False
+        self.key_name = 'C'
+        # sidechain ducking: duck this track by another track's onsets
+        self.sidechain_src = ''
+        self.sidechain_amt = 0.0
+
+    _DEG_RE = re.compile(r'^([#b]?)([1-7])([\',]*)$')
+
+    def _deg_to_pitch(self, tok):
+        """Resolve a scale-degree token ('1', '#4', 'b7,', '5''') to a pitch
+        name relative to the track's key. Returns None if not a degree token.
+        Degree 1 sits at octave 4; ' raises an octave, ',' lowers one."""
+        m = self._DEG_RE.match(tok)
+        if not m: return None
+        acc, deg, octmarks = m.groups()
+        tonic, scale, prefer_flat = _key_tonic_and_scale(self.key_name)
+        pc = (tonic + scale[int(deg) - 1]) % 12
+        midi = (4 + 1) * 12 + pc
+        midi += 12 * octmarks.count("'") - 12 * octmarks.count(',')
+        if acc == '#': midi += 1
+        elif acc == 'b': midi -= 1
+        # spell with flats when the user wrote 'b' or the key prefers flats
+        return midi_to_name(midi, flat=(acc == 'b' or (acc != '#' and prefer_flat)))
 
     def line(self, text: str, key_acc: dict[str, str] = {}) -> Track:
         text = text.replace('|', ' | ').replace('||', ' || ')
@@ -147,12 +176,18 @@ class Track:
         text = re.sub(r'\.+', _pad_dots, text)
         text = text.replace('~', ' ~ ')
         toks = text.split()
-        i = 0; cur = 1.0; cur_dyn = ''; tuplet_n = 0; cur_voice = 0
+        i = 0; cur = 1.0; cur_dyn = self.cur_dyn; tuplet_n = 0; cur_voice = 0
         cur_vib = 0.0; cur_tre = 0.0; cur_port = 0.0; cur_tie = False
         cur_prob = 1.0; cresc_notes = []
         while i < len(toks):
             t = toks[i]
-            if t.startswith('#'): i+=1; continue
+            # inline comment — but '#4' is a scale degree token
+            if t.startswith('#') and not re.match(r"^#[1-7][',]*$", t):
+                i+=1; continue
+            if t in _DYN_MAP:
+                # bare dynamics token ('mf', 'ff', ...) sets the dynamic
+                # level for all subsequent notes on this line
+                cur_dyn = t; i+=1; continue
             if ':' in t and tuplet_n == 0:
                 if t.startswith('voice:'):
                     try: cur_voice = int(t.split(':')[1]); i+=1; continue
@@ -231,8 +266,39 @@ class Track:
                         except (ValueError, TypeError): pass
                     continue
                 if tok in ('arp','arpeggio'):
-                    i+=1
-                    if i < len(toks) and toks[i] in ('up','down','ud','rand','downup'): i+=1
+                    i+=1; direction = 'up'
+                    if i < len(toks) and toks[i] in ('up','down','ud','downup','rand'):
+                        direction = toks[i]; i+=1
+                    arp_pitches = []
+                    if i < len(toks) and toks[i] == '(':
+                        i+=1
+                        while i < len(toks) and toks[i] != ')':
+                            if toks[i] not in ('|','||',','): arp_pitches.append(toks[i])
+                            i+=1
+                        i+=1
+                    elif i < len(toks):
+                        ch = parse_chord(toks[i])
+                        if ch is not None:
+                            arp_pitches = [midi_to_name(m) for m in ch]; i+=1
+                        elif re.match(r'^[A-G][b#]?\d+$', toks[i]):
+                            arp_pitches = [toks[i]]; i+=1
+                    nd = cur
+                    if i < len(toks):
+                        nd2 = _parse_dur(toks[i])
+                        if nd2 is not None: nd = nd2; i+=1
+                    if arp_pitches:
+                        mids = sorted((pitch_to_midi(p) for p in arp_pitches
+                                       if pitch_to_midi(p) is not None))
+                        names = [midi_to_name(m) for m in mids]
+                        if direction == 'down': names = names[::-1]
+                        elif direction == 'ud': names = names + names[-2:0:-1]
+                        elif direction == 'downup': names = names[::-1] + names[1:-1]
+                        elif direction == 'rand': random.shuffle(names)
+                        for p in names:
+                            self._emit_note(_apply_key(p, key_acc), nd,
+                                            cur_dyn, cur_voice, cur_vib, cur_tre,
+                                            cur_port, prob=cur_prob)
+                            self._bar_pos += nd
                     continue
                 if tok == 'humanize':
                     i+=1
@@ -273,6 +339,39 @@ class Track:
                                     self.notes.append(n)
                                     if n.rest or n.pitch.startswith('$'): pass
                                     elif cresc_notes is not None: cresc_notes.append(n)
+                    continue
+                if tok == 'drums':
+                    # @drums 16 { x . x x . x . x x . x . x x . x }
+                    # or shorthand bars:  @drums x-x-x-x | x-x-x-x
+                    i+=1; nsteps = None
+                    if i < len(toks):
+                        try: nsteps = int(toks[i]); i+=1
+                        except (ValueError, TypeError): nsteps = None
+                    steps = []
+                    if i < len(toks) and toks[i] == '{':
+                        i+=1
+                        while i < len(toks) and toks[i] != '}':
+                            if toks[i] not in (',','|','||'): steps.append(toks[i])
+                            i+=1
+                        i+=1
+                    else:
+                        while i < len(toks) and toks[i] not in ('|','||','@'):
+                            if toks[i] not in (',',''): steps.append(toks[i])
+                            i+=1
+                    if steps:
+                        if nsteps is None: nsteps = len(steps)
+                        nd = cur / max(nsteps, 1)
+                        for ste in steps:
+                            if ste in ('x', 'X', 'o', 'hit'):
+                                acc = 1.3 if ste == 'X' else 1.0
+                                n = self._mknote('C2', nd, min(1.0, 0.9*acc), cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
+                                if n: self.notes.append(n)
+                            elif ste in ('g', 'ghost'):
+                                n = self._mknote('C2', nd, 0.35, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
+                                if n: self.notes.append(n)
+                            else:
+                                self.notes.append(Note('R', nd, 0))
+                            self._bar_pos += nd
                     continue
                 if tok in ('coin','rand','choose','shuffle'):
                     cmd = tok; i+=1; ps = []
@@ -377,6 +476,54 @@ class Track:
             if p and p[0] in ('>','^','+'):
                 accent_lvl = {'>':1,'^':2,'+':3}[p[0]]
                 p = p[1:]
+            if self.degrees and p and (p[0].isdigit() or p[:2] in ('#1','#2','#3','#4','#5','#6','#7','b1','b2','b3','b4','b5','b6','b7')):
+                dm = re.match(r'^([#b]?[1-7][\'.]*)([A-Za-z0-9]*)$', p)
+                if dm:
+                    degtok, qual = dm.group(1), dm.group(2)
+                    root_name = self._deg_to_pitch(degtok)
+                    if root_name is not None:
+                        root_midi = pitch_to_midi(root_name)
+                        if qual:
+                            from ._chords import _CHORD_INTERVALS
+                            ivs = _CHORD_INTERVALS.get(qual)
+                            if ivs is not None:
+                                nd = cur; vel = 0.8; pea = '·'; i+=1
+                                if i < len(toks):
+                                    nt = toks[i]
+                                    if nt == '.':
+                                        pea = '.'; i+=1
+                                        if i < len(toks):
+                                            nd2 = _parse_dur(toks[i])
+                                            if nd2 is not None: nd = nd2; i+=1
+                                    elif nt == '~':
+                                        pea = '~'; i+=1
+                                        if i < len(toks):
+                                            nd2 = _parse_dur(toks[i])
+                                            if nd2 is not None: nd = nd2; i+=1
+                                    else:
+                                        nd2 = _parse_dur(nt)
+                                        if nd2 is not None: nd = nd2; i+=1
+                                if i < len(toks) and toks[i].startswith('@') and len(toks[i])>1:
+                                    try: vel = clamp(float(toks[i][1:])); i+=1
+                                    except (ValueError, TypeError): pass
+                                self._cur_group += 1
+                                # spell chord tones with flats if the degree
+                                # resolved to a flat spelling (or flat key)
+                                _, _, _pf = _key_tonic_and_scale(self.key_name)
+                                _flat = 'b' in root_name or (_pf and '#' not in root_name)
+                                for iv in ivs:
+                                    n = self._mknote(midi_to_name(root_midi + iv, flat=_flat), nd, vel, cur_dyn, cur_voice, cur_vib, cur_tre, cur_port, cur_prob)
+                                    if n:
+                                        n.group = self._cur_group
+                                        if pea == '.': n.staccato = True
+                                        elif pea == '~': n.tie = True
+                                        if accent_lvl: n.accent = accent_lvl
+                                        self.notes.append(n)
+                                        if n.rest or n.pitch.startswith('$'): pass
+                                        elif cresc_notes is not None: cresc_notes.append(n)
+                                self._bar_pos += nd; cur = nd; continue
+                            # unknown quality: fall through as single degree note
+                        p = root_name
             if not p or not p[0].isupper(): i+=1; continue
 
             m = re.match(r'^[A-G][b#]?(\d+)$', p)
@@ -449,6 +596,9 @@ class Track:
                 if n.rest or n.pitch.startswith('$'): pass
                 elif cresc_notes is not None: cresc_notes.append(n)
             cur = nd
+        # dynamics are global: persist to the track so a bare 'mf' line
+        # keeps applying to all subsequent lines
+        self.cur_dyn = cur_dyn
         return self
 
     def _emit_note(self, p, d, dyn='', voice=0, vib=0, tre=0, port=0, vel=0.8, pea='·', prob=1.0):
@@ -476,10 +626,11 @@ class Track:
         return None
 
     def beats(self) -> float:
-        bp = 0.0; prev = 0
+        bp = 0.0; prev = 0; pdur = 0.0
         for n in self.notes:
             if n.pitch.startswith('$'): continue
             if n.rest:
+                if prev != 0: bp += pdur; pdur = 0.0
                 if n.group == 0 or n.group != prev: bp += n.duration
                 prev = n.group; continue
             if n.group != 0 and n.group == prev: continue
@@ -501,6 +652,10 @@ class Track:
         t.humanize_timing = self.humanize_timing; t.humanize_vel = self.humanize_vel
         t.lfo_filter_rate = self.lfo_filter_rate; t.lfo_filter_depth = self.lfo_filter_depth
         t.mute = self.mute
+        t.sections = OrderedDict((k, [n.copy() for n in v]) for k, v in self.sections.items())
+        t.degrees = self.degrees; t.key_name = self.key_name
+        t.cur_dyn = self.cur_dyn
+        t.sidechain_src = self.sidechain_src; t.sidechain_amt = self.sidechain_amt
         return t
 
     def __repr__(self) -> str:
@@ -516,6 +671,14 @@ class Song:
         self.delay = 0.0
         self.beats_per_bar = 4
         self.beat_unit = 4
+        # arrangement: list of (section_name, repeat_count); empty = linear song
+        self.arrange = []
+        self.defined_sections = set()
+        # chord progression: list of (root_midi, [chord_midis]); one bar each
+        self.progression = []
+        # master bus: volume and soft-knee compressor (threshold, ratio)
+        self.master_vol = 1.0
+        self.master_comp = None
         self._render_cache = None
         self._cache_key = None
 
@@ -528,8 +691,10 @@ class Song:
 
     def _cache_fingerprint(self):
         return (self.tempo, self.rev, self.delay, self.beats_per_bar,
-                self.beat_unit, len(self.tracks),
-                tuple(id(t) for t in self.tracks))
+                self.beat_unit, len(self.tracks), self.master_vol,
+                self.master_comp, self.arrange and tuple(self.arrange) or (),
+                tuple((id(t), t.sidechain_src, t.sidechain_amt, t.mute,
+                       t.filter_type, t.filter_freq, t.dist_amount) for t in self.tracks))
 
     def render(self, extra: float = 0.5) -> np.ndarray:
         fp = self._cache_fingerprint()
@@ -540,6 +705,7 @@ class Song:
         ex = int(extra*SAMPLE_RATE)
         ns = int(tb*self.beat_secs*SAMPLE_RATE)+ex
         mix = np.zeros((ns, CHANNELS), dtype=np.float64)
+        rendered = []
         for tr in self.tracks:
             if tr.mute: continue
             trk = self._render_track(tr, ns)
@@ -552,25 +718,70 @@ class Song:
             if tr.dist_amount > 0:
                 gain = 1 + tr.dist_amount * 10
                 trk = np.tanh(trk * gain) / np.tanh(gain) if gain > 0 else trk
+            rendered.append((tr, trk))
+        # sidechain ducking: duck target tracks by the source track's onsets
+        duck_cache = {}
+        for tr, trk in rendered:
+            if tr.sidechain_src and tr.sidechain_amt > 0:
+                key = tr.sidechain_src
+                if key not in duck_cache:
+                    src = next((t for t in self.tracks if t.name == key and not t.mute), None)
+                    duck_cache[key] = (self._duck_envelope(src, ns)
+                                       if src is not None else None)
+                env = duck_cache[key]
+                if env is not None:
+                    # env is a full-depth dip shape; scale by the target's amount
+                    amt = min(0.9, max(0.0, tr.sidechain_amt))
+                    trk = trk * (1.0 - (1.0 - env[:, None]) * (amt / 0.9))
             mix += trk
+        if self.master_comp:
+            mix = _compress(mix, *self.master_comp)
         peak = np.max(np.abs(mix))
         if peak > 1.0: mix = mix/peak*0.95
+        if self.master_vol != 1.0: mix = mix * self.master_vol
         if self.rev > 0: mix = _reverb(mix, self.rev)
         if self.delay > 0: mix = _delay(mix, self.delay)
         self._render_cache = mix
         self._cache_key = self._cache_fingerprint()
         return mix
 
-    def _humanize_notes(self, notes):
-        if not notes or (self.humanize_timing <= 0 and self.humanize_vel <= 0):
+    def _note_onsets(self, tr):
+        """Return [(time_sec, velocity)] note-on events for a track."""
+        res = []; t = 0.0; bs = self.beat_secs; prev_group = 0
+        for n in tr.notes:
+            if n.pitch.startswith('$'): continue
+            if n.group and n.group == prev_group:
+                res.append((t, n.velocity)); continue
+            if n.rest:
+                t += n.duration; prev_group = n.group; continue
+            res.append((t, n.velocity))
+            t += n.duration; prev_group = n.group
+        return [(ti*bs, v) for ti, v in res]
+
+    def _duck_envelope(self, src, ns, release=0.15):
+        """Build a gain envelope that dips to 0.1 on each source onset and
+        recovers; callers scale the dip depth by the target track's amount."""
+        env = np.ones(ns)
+        rel_n = max(1, int(release * SAMPLE_RATE))
+        rec = np.exp(-np.arange(rel_n) / (release * SAMPLE_RATE / 3.0))
+        duck = 0.1 + 0.9 * rec
+        for tsec, vel in self._note_onsets(src):
+            st = int(tsec * SAMPLE_RATE)
+            if st >= ns: continue
+            end = min(ns, st + rel_n)
+            env[st:end] = np.minimum(env[st:end], duck[:end-st])
+        return env
+
+    def _humanize_notes(self, notes, timing, vel):
+        if not notes or (timing <= 0 and vel <= 0):
             return notes
         res = []
         for n in notes:
             c = n.copy()
-            if self.humanize_timing > 0:
-                c.humanize_toff = random.uniform(-self.humanize_timing, self.humanize_timing)
-            if self.humanize_vel > 0:
-                c.humanize_voff = random.uniform(-self.humanize_vel, self.humanize_vel)
+            if timing > 0:
+                c.humanize_toff = random.uniform(-timing, timing)
+            if vel > 0:
+                c.humanize_voff = random.uniform(-vel, vel)
                 c.velocity = clamp(c.velocity + c.humanize_voff)
             res.append(c)
         return res
@@ -598,6 +809,7 @@ class Song:
         acc_vel = self._ACCENT_VEL.get(n.accent, 1.0)
         toff = n.humanize_toff * bs
         st = int((time_sec + toff) * SAMPLE_RATE)
+        if st < 0: st = 0
         nsp = int(n.duration * bs * SAMPLE_RATE)
         if st >= ns: return last_freq, last_end, True
         if st+nsp > ns: nsp = ns-st
@@ -653,7 +865,7 @@ class Song:
         notes_copy = [n.copy() for n in tr.notes]
         notes_copy = self._merge_tied(notes_copy)
         if tr.humanize_timing > 0 or tr.humanize_vel > 0:
-            notes_copy = self._humanize_notes(notes_copy)
+            notes_copy = self._humanize_notes(notes_copy, tr.humanize_timing, tr.humanize_vel)
         if tr.sw > 0 and tr.sw != 0.5:
             notes_copy = self._swing_notes(notes_copy, tr.sw)
         last_freq = None; last_end = 0
@@ -743,7 +955,17 @@ class Song:
         from ._midi import song_to_text
         return song_to_text(self)
 
-    def play(self, wait: bool = True) -> None: _play(self.render(), wait)
+    def play(self, wait: bool = True, start: float = 0.0,
+             end: float = None, loop: int = 1) -> None:
+        """Play the song. start/end are in seconds; loop >= 1 repeats it."""
+        mix = self.render()
+        sr = SAMPLE_RATE
+        a = max(0, int(start * sr))
+        b = len(mix) if end is None else min(len(mix), int(end * sr))
+        if b <= a: return
+        seg = mix[a:b]
+        for _ in range(max(1, loop)):
+            _play(seg, wait)
     def save(self, fn: Union[str, Path]) -> Path: _save(self.render(), str(fn)); return Path(fn).resolve()
 
     def show(self) -> None:

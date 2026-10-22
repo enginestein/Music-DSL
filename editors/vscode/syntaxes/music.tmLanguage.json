@@ -1,0 +1,174 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Music DSL",
+  "scopeName": "source.music",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#track-headers" },
+    { "include": "#directives" },
+    { "include": "#sections-labels" },
+    { "include": "#at-commands" },
+    { "include": "#effects" },
+    { "include": "#dynamics" },
+    { "include": "#accents" },
+    { "include": "#notes" },
+    { "include": "#rests" },
+    { "include": "#durations" },
+    { "include": "#velocity" },
+    { "include": "#repeats" },
+    { "include": "#tuplets" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.number-sign.music", "match": "#.*$" }
+      ]
+    },
+    "track-headers": {
+      "patterns": [
+        {
+          "name": "meta.track-header.music",
+          "match": "^(--)([^-]*)(--)$",
+          "captures": {
+            "1": { "name": "punctuation.definition.track.begin.music" },
+            "3": { "name": "punctuation.definition.track.end.music" }
+          }
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "match": "^\\s*(tempo|name|key|time|swing|master|arrange|progression|degrees|label|section|transpose|loop|from|to)\\s*(:)(.*)$",
+          "name": "meta.directive.music",
+          "captures": {
+            "1": { "name": "keyword.control.directive.music" },
+            "2": { "name": "punctuation.separator.key-value.music" },
+            "3": { "name": "string.unquoted.directive-value.music" }
+          }
+        }
+      ]
+    },
+    "sections-labels": {
+      "patterns": [
+        {
+          "name": "entity.name.section.music",
+          "match": "^\\s*%[A-Za-z_][\\w]*"
+        },
+        {
+          "name": "entity.name.label.music",
+          "match": "^\\s*\\[[^\\]]+\\]"
+        }
+      ]
+    },
+    "at-commands": {
+      "patterns": [
+        {
+          "match": "@(jump|done|include|pattern|end|steps|arp|drums|gen|coin|call|ostinato)\\b",
+          "name": "keyword.control.at-command.music",
+          "captures": {
+            "1": { "name": "keyword.control.at-command.music" }
+          }
+        },
+        {
+          "match": "@[A-Za-z_][\\w]*",
+          "name": "entity.name.function.pattern-call.music"
+        }
+      ]
+    },
+    "effects": {
+      "patterns": [
+        {
+          "match": "\\b(reverb|delay|filter|dist|distortion|humanize|vibrato|tremolo|portamento|lfo|sidechain|swing|adsr|voice|glide|chorus|pan|vol|volatility)\\s*(:)",
+          "name": "meta.effect.music",
+          "captures": {
+            "1": { "name": "support.function.effect.music" },
+            "2": { "name": "punctuation.separator.key-value.music" }
+          }
+        }
+      ]
+    },
+    "dynamics": {
+      "patterns": [
+        {
+          "name": "keyword.other.dynamic.music",
+          "match": "(?<![#b\\w])(ppp|pp|p|mp|mf|f|ff|fff|sffz|fp)(?!\\w)"
+        }
+      ]
+    },
+    "accents": {
+      "patterns": [
+        {
+          "name": "keyword.other.accent.music",
+          "match": "(^|[\\s(])[>+^](?=[A-G])"
+        }
+      ]
+    },
+    "notes": {
+      "patterns": [
+        {
+          "name": "constant.numeric.note.music",
+          "match": "(?<![#\\w])([A-Ga-g][#b]?\\d{1,2})(?![\\w])"
+        },
+        {
+          "name": "entity.name.chord.music",
+          "match": "(?<![#\\w])([A-G][#b]?\\d{0,2}(?:maj|m|dim|aug|sus|add|alt|M)[\\w]*)"
+        }
+      ]
+    },
+    "rests": {
+      "patterns": [
+        {
+          "name": "constant.language.rest.music",
+          "match": "(?<!\\w)(R|rest|_)(?!\\w)"
+        }
+      ]
+    },
+    "durations": {
+      "patterns": [
+        {
+          "match": "(?<=\\s)(w|h|q|e|s|t|x)(\\.*)",
+          "name": "storage.type.duration.music"
+        }
+      ]
+    },
+    "velocity": {
+      "patterns": [
+        {
+          "match": "@(\\d*\\.?\\d+)",
+          "name": "constant.numeric.velocity.music",
+          "captures": {
+            "1": { "name": "constant.numeric.velocity.music" }
+          }
+        }
+      ]
+    },
+    "repeats": {
+      "patterns": [
+        {
+          "match": "x(\\d+)",
+          "name": "keyword.other.repeat.music",
+          "captures": {
+            "1": { "name": "constant.numeric.repeat-count.music" }
+          }
+        },
+        {
+          "name": "keyword.other.volta.music",
+          "match": "\\[[12]\\]?"
+        }
+      ]
+    },
+    "tuplets": {
+      "patterns": [
+        {
+          "match": "(\\d+)\\s*:\\s*(\\d+)",
+          "name": "meta.tuplet.music",
+          "captures": {
+            "1": { "name": "constant.numeric.tuplet.music" },
+            "2": { "name": "constant.numeric.tuplet.music" }
+          }
+        }
+      ]
+    }
+  }
+}

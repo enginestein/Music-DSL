@@ -39,6 +39,23 @@ def _key_accidentals(key):
     else: return {}
     return acc
 
+_MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11]
+_MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10]
+
+def _key_tonic_and_scale(key):
+    """Return (tonic_midi, scale_intervals, prefer_flat) for a key name.
+
+    tonic_midi is the tonic pitch class (0-11); scale is 7 semitone
+    offsets. Minor keys ('Am', 'F#m') use the natural minor scale.
+    """
+    from ._chords import _SEMIS
+    k = (key or 'C').strip()
+    is_minor = k.lower().endswith('m') and len(k) > 1
+    base = k[:-1] if is_minor else k
+    pc = _SEMIS.get(base, 0)
+    prefer_flat = base[0] in 'FB' and len(base) <= 2 or base.endswith('b')
+    return pc, (_MINOR_SCALE if is_minor else _MAJOR_SCALE), prefer_flat
+
 def _apply_key(pitch, acc_map):
     if not acc_map or len(pitch) < 2:
         return pitch

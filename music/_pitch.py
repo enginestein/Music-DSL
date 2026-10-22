@@ -5,6 +5,7 @@ _SEMIS = {'C':0,'C#':1,'Db':1,'D':2,'D#':3,'Eb':3,'E':4,
           'A':9,'A#':10,'Bb':10,'B':11,'Cb':11}
 _NOTE_RE = re.compile(r'^([A-G][b#]?)(-?\d+)$')
 _NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B']
+_NOTE_NAMES_FLAT = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B']
 
 def pitch_to_midi(name):
     m = _NOTE_RE.match(name)
@@ -18,8 +19,9 @@ def name_to_freq(name):
     m = pitch_to_midi(name)
     return midi_to_freq(m) if m else 0.0
 
-def midi_to_name(m):
-    return _NOTE_NAMES[m % 12] + str(m // 12 - 1)
+def midi_to_name(m, flat=False):
+    names = _NOTE_NAMES_FLAT if flat else _NOTE_NAMES
+    return names[m % 12] + str(m // 12 - 1)
 
 def clamp(v, lo=0, hi=1):
     return max(lo, min(hi, v))
