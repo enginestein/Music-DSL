@@ -2,7 +2,7 @@
   "name": "music-dsl",
   "displayName": "Music DSL",
   "description": "Syntax highlighting for the Music DSL (.music files)",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "publisher": "music-dsl",
   "engines": { "vscode": "^1.50.0" },
   "categories": ["Programming Languages"],

@@ -13,7 +13,7 @@ Then press `F5` to launch an Extension Development Host, or package it:
 ```
 npm install -g @vscode/vsce
 cd editors/vscode && vsce package
-code --install-extension music-dsl-2.1.0.vsix
+code --install-extension music-dsl-3.0.0.vsix
 ```
 
 Files ending in `.music` get full syntax highlighting.
