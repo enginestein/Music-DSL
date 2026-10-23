@@ -229,7 +229,8 @@ progression: {tpl['prog']}
 arrange: {tpl['arrange']}
 
 {tpl['body']}"""
-    p.write_text(body)
+    Path(p).parent.mkdir(parents=True, exist_ok=True)
+    Path(p).write_text(body)
     print(f"  created {p} ({style} template)")
     print(f"  play it:  music {p}")
     return 0
